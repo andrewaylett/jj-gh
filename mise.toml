@@ -1,0 +1,4 @@
+# Dev tooling for working on jj-gh itself.
+[tools]
+rust = "stable"
+jj = "latest"

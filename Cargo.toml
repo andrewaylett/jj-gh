@@ -1,0 +1,28 @@
+[package]
+name = "jj-gh"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.89"
+description = "jj-native access to GitHub pull requests, with first-class support for stacks"
+license = "MIT"
+repository = "https://github.com/andrewaylett/jj-gh"
+readme = "README.md"
+keywords = ["jj", "jujutsu", "github", "pull-request", "stacked"]
+categories = ["command-line-utilities", "development-tools"]
+
+[dependencies]
+anyhow = "1"
+clap = { version = "4", features = ["derive", "env"] }
+clap_complete = "4"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+ureq = { version = "3", features = ["json", "platform-verifier"] }
+
+[dev-dependencies]
+tempfile = "3"
+tiny_http = "0.12"
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
