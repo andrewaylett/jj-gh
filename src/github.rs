@@ -9,6 +9,12 @@ use serde_json::{Value, json};
 use crate::auth::Token;
 use crate::repo::RepoRef;
 
+/// What GitHub assumes when no `X-GitHub-Api-Version` header is sent.
+const DEFAULT_API_VERSION: &str = "2022-11-28";
+
+/// The stacked pull request endpoints are only available from this version.
+const STACKS_API_VERSION: &str = "2026-03-10";
+
 pub struct Client {
     agent: ureq::Agent,
     token: Token,
@@ -31,7 +37,6 @@ pub struct PullRequest {
     pub number: u64,
     pub title: String,
     pub url: String,
-    pub body: String,
     pub state: PrState,
     pub is_draft: bool,
     pub base_ref_name: String,
@@ -44,7 +49,7 @@ pub struct PullRequest {
     pub checks: Option<String>,
 }
 
-const PR_FIELDS: &str = "number title url body state isDraft baseRefName headRefName \
+const PR_FIELDS: &str = "number title url state isDraft baseRefName headRefName \
     headRefOid reviewDecision mergeable \
     commits(last: 1) { nodes { commit { statusCheckRollup { state } } } }";
 
@@ -153,6 +158,16 @@ impl Client {
     }
 
     fn rest(&self, method: &str, path: &str, body: Option<Value>) -> Result<Value> {
+        self.rest_versioned(method, path, body, DEFAULT_API_VERSION)
+    }
+
+    fn rest_versioned(
+        &self,
+        method: &str,
+        path: &str,
+        body: Option<Value>,
+        version: &str,
+    ) -> Result<Value> {
         let url = format!("{}{}", self.api, path);
         let what = format!("{method} {path}");
         let auth = format!("Bearer {}", self.token.value);
@@ -162,30 +177,35 @@ impl Client {
                 .get(&url)
                 .header("Authorization", &auth)
                 .header("Accept", "application/vnd.github+json")
+                .header("X-GitHub-Api-Version", version)
                 .call(),
             ("POST", Some(b)) => self
                 .agent
                 .post(&url)
                 .header("Authorization", &auth)
                 .header("Accept", "application/vnd.github+json")
+                .header("X-GitHub-Api-Version", version)
                 .send_json(b),
             ("PATCH", Some(b)) => self
                 .agent
                 .patch(&url)
                 .header("Authorization", &auth)
                 .header("Accept", "application/vnd.github+json")
+                .header("X-GitHub-Api-Version", version)
                 .send_json(b),
             ("PUT", Some(b)) => self
                 .agent
                 .put(&url)
                 .header("Authorization", &auth)
                 .header("Accept", "application/vnd.github+json")
+                .header("X-GitHub-Api-Version", version)
                 .send_json(b),
             ("PUT", None) => self
                 .agent
                 .put(&url)
                 .header("Authorization", &auth)
                 .header("Accept", "application/vnd.github+json")
+                .header("X-GitHub-Api-Version", version)
                 .send_empty(),
             _ => bail!("unsupported request {what}"),
         }
@@ -362,6 +382,85 @@ impl Client {
             "PUT",
             &format!("/repos/{}/pulls/{number}/merge", self.repo.slug()),
             Some(json!({ "merge_method": method })),
+        )
+        .map(|_| ())
+    }
+}
+
+/// A native GitHub stack, as far as we care: its identifier and the PRs in it, bottom first.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Stack {
+    pub number: u64,
+    /// Open PRs only; merged ones stay in GitHub's stack but aren't ours to manage.
+    pub open: Vec<u64>,
+}
+
+impl Stack {
+    fn from_rest(v: &Value) -> Result<Self> {
+        let number = v["number"]
+            .as_u64()
+            .ok_or_else(|| anyhow!("no stack number in response"))?;
+        let open = v["pull_requests"]
+            .as_array()
+            .map(|a| {
+                a.iter()
+                    .filter(|p| p["merged_at"].is_null())
+                    .filter_map(|p| p["number"].as_u64())
+                    .collect()
+            })
+            .unwrap_or_default();
+        Ok(Stack { number, open })
+    }
+}
+
+impl Client {
+    fn stacks_path(&self, rest: &str) -> String {
+        format!("/repos/{}/stacks{rest}", self.repo.slug())
+    }
+
+    /// The native stack containing `pr`, if there is one.
+    pub fn stack_containing(&self, pr: u64) -> Result<Option<Stack>> {
+        let v = self.rest_versioned(
+            "GET",
+            &self.stacks_path(&format!("?pull_request={pr}")),
+            None,
+            STACKS_API_VERSION,
+        )?;
+        v.as_array()
+            .and_then(|a| a.first())
+            .map(Stack::from_rest)
+            .transpose()
+    }
+
+    /// Create a stack from PRs ordered bottom to top.
+    pub fn create_stack(&self, pull_requests: &[u64]) -> Result<()> {
+        self.rest_versioned(
+            "POST",
+            &self.stacks_path(""),
+            Some(json!({ "pull_requests": pull_requests })),
+            STACKS_API_VERSION,
+        )
+        .map(|_| ())
+    }
+
+    /// Append PRs, ordered upward from the current top of the stack.
+    pub fn add_to_stack(&self, stack: u64, pull_requests: &[u64]) -> Result<()> {
+        self.rest_versioned(
+            "POST",
+            &self.stacks_path(&format!("/{stack}/add")),
+            Some(json!({ "pull_requests": pull_requests })),
+            STACKS_API_VERSION,
+        )
+        .map(|_| ())
+    }
+
+    /// Remove every unmerged PR from the stack, dissolving it.
+    pub fn unstack(&self, stack: u64) -> Result<()> {
+        self.rest_versioned(
+            "POST",
+            &self.stacks_path(&format!("/{stack}/unstack")),
+            Some(json!({})),
+            STACKS_API_VERSION,
         )
         .map(|_| ())
     }

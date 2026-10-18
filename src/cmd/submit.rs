@@ -2,8 +2,8 @@ use anyhow::{Result, bail};
 use serde_json::json;
 
 use super::{Ctx, paint};
-use crate::github::{PrState, PullRequest};
-use crate::stack::{self, Segment};
+use crate::github::{Client, PrState, PullRequest};
+use crate::stack::Segment;
 
 pub struct Args {
     pub revset: Option<String>,
@@ -79,7 +79,6 @@ pub fn run(ctx: &Ctx, args: &Args) -> Result<()> {
 
     // 2. Create or retarget PRs, bottom first so each base exists.
     let mut numbers: Vec<u64> = Vec::new();
-    let mut current: Vec<PullRequest> = Vec::new();
     for (i, s) in segments.iter().enumerate() {
         let base = base_of(i);
         match &prs[i] {
@@ -103,11 +102,6 @@ pub fn run(ctx: &Ctx, args: &Args) -> Result<()> {
                     s,
                 );
                 numbers.push(pr.number);
-                let mut p = pr.clone();
-                if args.update_description {
-                    p.body = s.pr_body();
-                }
-                current.push(p);
             }
             None => {
                 let created = client.create_pull_request(
@@ -120,33 +114,43 @@ pub fn run(ctx: &Ctx, args: &Args) -> Result<()> {
                 client.request_reviewers(created.number, &args.reviewers)?;
                 report("created", created.number, &created.url, s);
                 numbers.push(created.number);
-                current.push(PullRequest {
-                    number: created.number,
-                    title: s.title().to_string(),
-                    url: created.url,
-                    body: s.pr_body(),
-                    state: PrState::Open,
-                    is_draft: args.draft,
-                    base_ref_name: base.to_string(),
-                    head_ref_name: s.bookmark.clone(),
-                    head_ref_oid: s.head().commit_id.clone(),
-                    review_decision: None,
-                    mergeable: None,
-                    checks: None,
-                });
             }
         }
     }
 
-    // 3. Now that every number is known, refresh the stack section.
-    for (i, pr) in current.iter().enumerate() {
-        let section = (numbers.len() > 1).then(|| stack::stack_section(&numbers, i));
-        let body = stack::with_stack_section(&pr.body, section.as_deref());
-        if body.trim_end() != pr.body.trim_end() {
-            client.update_pull_request(pr.number, json!({ "body": body }))?;
-        }
+    // 3. Tell GitHub about the stack, so its own stack UI appears.
+    if numbers.len() > 1
+        && let Err(e) = sync_native_stack(&client, &numbers)
+    {
+        eprintln!(
+            "{} couldn't update GitHub's native stack: {e:#}",
+            paint("33", "warning:")
+        );
     }
     Ok(())
+}
+
+/// Make GitHub's stack for these PRs (bottom first) match `numbers`, creating,
+/// extending, or rebuilding it as needed.
+fn sync_native_stack(client: &Client, numbers: &[u64]) -> Result<()> {
+    let mut existing = None;
+    for &n in numbers {
+        if let Some(s) = client.stack_containing(n)? {
+            existing = Some(s);
+            break;
+        }
+    }
+    match existing {
+        None => client.create_stack(numbers),
+        Some(s) if s.open == numbers => Ok(()),
+        Some(s) if numbers.starts_with(&s.open) => {
+            client.add_to_stack(s.number, &numbers[s.open.len()..])
+        }
+        Some(s) => {
+            client.unstack(s.number)?;
+            client.create_stack(numbers)
+        }
+    }
 }
 
 fn report(verb: &str, number: u64, url: &str, seg: &Segment) {

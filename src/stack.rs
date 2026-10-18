@@ -120,49 +120,6 @@ pub fn segment(changes: Vec<Change>, opts: &Options) -> Result<Vec<Segment>> {
     Ok(segments)
 }
 
-pub const MARKER_START: &str = "<!-- jj-gh:stack:start -->";
-pub const MARKER_END: &str = "<!-- jj-gh:stack:end -->";
-
-/// Render the managed stack section for the PR at `current` (an index into `numbers`).
-pub fn stack_section(numbers: &[u64], current: usize) -> String {
-    let mut s = String::new();
-    s.push_str(MARKER_START);
-    s.push_str("\n---\n**Stack** (bottom merges first), managed by [jj-gh](https://github.com/andrewaylett/jj-gh):\n\n");
-    for (i, n) in numbers.iter().enumerate() {
-        if i == current {
-            s.push_str(&format!("{}. **#{n}** ← this PR\n", i + 1));
-        } else {
-            s.push_str(&format!("{}. #{n}\n", i + 1));
-        }
-    }
-    s.push_str(MARKER_END);
-    s
-}
-
-/// Replace (or append) the managed section in `body`.
-pub fn with_stack_section(body: &str, section: Option<&str>) -> String {
-    let (before, after) = match (body.find(MARKER_START), body.find(MARKER_END)) {
-        (Some(s), Some(e)) if s < e => (
-            body[..s].trim_end(),
-            body[e + MARKER_END.len()..].trim_start_matches('\n'),
-        ),
-        _ => (body.trim_end(), ""),
-    };
-    let mut out = before.to_string();
-    if let Some(section) = section {
-        if !out.is_empty() {
-            out.push_str("\n\n");
-        }
-        out.push_str(section);
-    }
-    if !after.is_empty() {
-        out.push_str("\n\n");
-        out.push_str(after.trim_end());
-    }
-    out.push('\n');
-    out.trim_start().to_string()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -227,29 +184,5 @@ mod tests {
         };
         let segs = segment(vec![ch("a", "root", "one", &["main"])], &o).unwrap();
         assert!(segs[0].new_bookmark);
-    }
-
-    #[test]
-    fn stack_section_round_trips() {
-        let sec = stack_section(&[1, 2, 3], 1);
-        assert!(sec.contains("**#2** ← this PR"));
-        let once = with_stack_section("Body text.", Some(&sec));
-        assert!(once.starts_with("Body text.\n\n<!-- jj-gh:stack:start -->"));
-        let sec2 = stack_section(&[1, 2], 0);
-        let twice = with_stack_section(&once, Some(&sec2));
-        assert_eq!(twice.matches(MARKER_START).count(), 1);
-        assert!(twice.contains("**#1** ← this PR"));
-        assert!(!twice.contains("#3"));
-        // Removing it restores the original text.
-        assert_eq!(with_stack_section(&twice, None), "Body text.\n");
-    }
-
-    #[test]
-    fn section_preserves_text_after_it() {
-        let sec = stack_section(&[5], 0);
-        let body = format!("Intro\n\n{sec}\n\nFooter");
-        let out = with_stack_section(&body, Some(&stack_section(&[5, 6], 0)));
-        assert!(out.starts_with("Intro\n\n"));
-        assert!(out.ends_with("Footer\n"));
     }
 }
