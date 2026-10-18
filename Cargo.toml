@@ -1,6 +1,6 @@
 [package]
 name = "jj-gh"
-version = "0.1.0"
+version = "0.0.0" # placeholder: the release workflow sets this from the tag
 edition = "2024"
 rust-version = "1.89"
 description = "jj-native access to GitHub pull requests, with first-class support for stacks"

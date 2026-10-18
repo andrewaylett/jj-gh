@@ -17,7 +17,7 @@ use cmd::Ctx;
 /// Add `gh = ["util", "exec", "--", "jj-gh"]` under `[aliases]` in your jj
 /// config to run these as `jj gh <command>`.
 #[derive(Parser)]
-#[command(name = "jj-gh", version, about, long_about = None)]
+#[command(name = "jj-gh", version = env!("JJ_GH_VERSION"), about, long_about = None)]
 struct Cli {
     /// Path to the jj repository (default: current directory).
     #[arg(short = 'R', long, global = true, value_name = "PATH")]
