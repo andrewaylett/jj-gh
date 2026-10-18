@@ -2,3 +2,4 @@
 [tools]
 rust = "stable"
 jj = "latest"
+pinact = "latest"
