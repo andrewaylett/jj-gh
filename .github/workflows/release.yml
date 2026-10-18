@@ -94,6 +94,10 @@ jobs:
       with:
         download: jj-gh-*.tar.gz jj-gh-*.zip
         bin: jj-gh
+        # Consumers generate completions by running the shipped binary, so
+        # nothing extra needs to go in the archives.
+        resources: |
+          completion/bash,zsh,fish=exec:jj-gh completions {shell}
         attest: link
         upload: false
     - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
