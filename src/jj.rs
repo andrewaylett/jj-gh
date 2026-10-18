@@ -49,6 +49,28 @@ const LOG_TEMPLATE: &str = r#"'{"change":' ++ json(change_id) ++
   ',"parents":[' ++ parents.map(|p| json(p.commit_id())).join(",") ++ ']' ++
   ',"bookmarks":[' ++ local_bookmarks.map(|b| json(b.name())).join(",") ++ ']}' ++ "\n""#;
 
+/// Split `LOG_TEMPLATE` output into one JSON document per change.
+///
+/// jj's `json()` can emit a raw newline inside a string (seen with a
+/// `Claude-Session: <url>` trailer, where the space became a newline), which is
+/// invalid JSON. Every record starts with `{"change":` and quotes inside
+/// strings are always escaped, so any other line is a continuation of the
+/// previous record and is rejoined with an escaped newline.
+fn split_records(out: &str) -> Vec<String> {
+    let mut records: Vec<String> = Vec::new();
+    for line in out.lines() {
+        match records.last_mut() {
+            Some(last) if !line.starts_with(r#"{"change":"#) => {
+                last.push_str("\\n");
+                last.push_str(line);
+            }
+            _ if line.trim().is_empty() => {}
+            _ => records.push(line.to_string()),
+        }
+    }
+    records
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct Jj {
     pub repository: Option<PathBuf>,
@@ -105,8 +127,8 @@ impl Jj {
             "-T",
             LOG_TEMPLATE,
         ])?;
-        out.lines()
-            .filter(|l| !l.trim().is_empty())
+        split_records(&out)
+            .iter()
             .map(|l| serde_json::from_str(l).with_context(|| format!("unexpected jj output: {l}")))
             .collect()
     }
