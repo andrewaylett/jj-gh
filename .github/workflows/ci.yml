@@ -28,6 +28,11 @@ jobs:
         uses: jdx/mise-action@v2
         with:
           install_args: jj
+      # The mise shim only resolves a version inside a mise-configured
+      # directory, but the e2e tests run jj from a temp dir.
+      - name: Put the real jj on PATH
+        shell: bash
+        run: dirname "$(mise which jj)" >> "$GITHUB_PATH"
       - run: git config --global user.name ci && git config --global user.email ci@example.com
       - run: cargo fmt --check
       - run: cargo clippy --all-targets -- -D warnings
