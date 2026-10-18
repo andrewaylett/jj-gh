@@ -22,6 +22,8 @@ struct Pr {
 #[derive(Default)]
 struct State {
     prs: BTreeMap<u64, Pr>,
+    /// Native stacks, each bottom to top.
+    stacks: Vec<Vec<u64>>,
 }
 
 struct Mock {
@@ -120,6 +122,35 @@ fn start_mock(bare: PathBuf, scratch: PathBuf) -> Mock {
                     }
                     (200, json!({"number": n}))
                 }
+                ("GET", p) if p.starts_with("/repos/o/r/stacks?pull_request=") => {
+                    let n: u64 = p.rsplit('=').next().unwrap().parse().unwrap();
+                    let found: Vec<Value> = st
+                        .stacks
+                        .iter()
+                        .enumerate()
+                        .filter(|(_, s)| s.contains(&n))
+                        .map(|(i, s)| stack_json(i, s))
+                        .collect();
+                    (200, json!(found))
+                }
+                ("POST", "/repos/o/r/stacks") => {
+                    let nums = stack_numbers(&json_body);
+                    st.stacks.push(nums);
+                    (
+                        201,
+                        stack_json(st.stacks.len() - 1, st.stacks.last().unwrap()),
+                    )
+                }
+                ("POST", p) if p.ends_with("/add") => {
+                    let i = stack_index(p);
+                    st.stacks[i].extend(stack_numbers(&json_body));
+                    (200, stack_json(i, &st.stacks[i]))
+                }
+                ("POST", p) if p.ends_with("/unstack") => {
+                    let i = stack_index(p);
+                    st.stacks[i].clear();
+                    (204, Value::Null)
+                }
                 ("PUT", p) if p.ends_with("/merge") => {
                     let n: u64 = p.split('/').rev().nth(1).unwrap().parse().unwrap();
                     let pr = st.prs.get_mut(&n).unwrap();
@@ -143,6 +174,33 @@ fn start_mock(bare: PathBuf, scratch: PathBuf) -> Mock {
         }
     });
     Mock { url, state }
+}
+
+fn stack_numbers(body: &Value) -> Vec<u64> {
+    body["pull_requests"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|n| n.as_u64().unwrap())
+        .collect()
+}
+
+/// Stack numbers are 1-based indexes into `State::stacks`.
+fn stack_index(path: &str) -> usize {
+    path.split('/')
+        .rev()
+        .nth(1)
+        .unwrap()
+        .parse::<usize>()
+        .unwrap()
+        - 1
+}
+
+fn stack_json(index: usize, numbers: &[u64]) -> Value {
+    json!({
+        "number": index + 1,
+        "pull_requests": numbers.iter().map(|n| json!({"number": n, "merged_at": null})).collect::<Vec<_>>(),
+    })
 }
 
 fn graphql(st: &State, bare: &Path, q: &str) -> Value {
@@ -330,11 +388,9 @@ fn submit_merge_and_restack() {
     );
     assert!(prs[&1].body.starts_with("The first change."));
     for pr in prs.values() {
-        assert!(pr.body.contains("jj-gh:stack:start"), "{}", pr.body);
-        assert!(pr.body.contains("#1") && pr.body.contains("#2"));
+        assert!(!pr.body.contains("jj-gh:stack"), "{}", pr.body);
     }
-    assert!(prs[&1].body.contains("**#1** ← this PR"));
-    assert!(prs[&2].body.contains("**#2** ← this PR"));
+    assert_eq!(env.mock.state.lock().unwrap().stacks, vec![vec![1, 2]]);
 
     // Status sees both, up to date, top of the stack first.
     let status = env.gh_ok(&["status"]);
@@ -371,11 +427,10 @@ fn submit_merge_and_restack() {
         "restacked onto the squash commit: {parent}"
     );
 
-    // Submitting again retargets the survivor at main and drops the stack table.
+    // Submitting again retargets the survivor at main.
     env.gh_ok(&["submit"]);
     let pr2 = &env.prs()[&2];
     assert_eq!(pr2.base, "main");
-    assert!(!pr2.body.contains("jj-gh:stack"), "{}", pr2.body);
 }
 
 #[test]

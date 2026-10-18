@@ -3,8 +3,8 @@
 jj-native access to GitHub pull requests, built around **stacks**.
 
 `jj-gh` looks at the changes between `trunk()` and your working copy, and turns
-each one into a pull request based on the one below it. It keeps the stack
-description on every PR up to date, restacks when the bottom PR merges, and
+each one into a pull request based on the one below it. It keeps GitHub's
+stack up to date, restacks when the bottom PR merges, and
 shows CI/review state for the whole stack in one go. It talks to `jj` through
 its CLI and to GitHub through its API, so there is no `git` or `gh` plumbing in
 your way.
@@ -50,7 +50,7 @@ you are. GitHub Enterprise works: the host is taken from the remote's URL.
 | Command | What it does |
 | --- | --- |
 | `status` (`st`) | Show the stack with PR numbers, checks, review state, and whether local changes still need pushing. |
-| `submit` (`sub`) | Create bookmarks as needed, push, and create or update one PR per change, each based on the one below. Writes a stack table into every PR description. Idempotent. |
+| `submit` (`sub`) | Create bookmarks as needed, push, and create or update one PR per change, each based on the one below. Registers the PRs as a native GitHub stack (creating, extending, or rebuilding it as needed; a failure there is only a warning). Idempotent. |
 | `sync` | `jj git fetch`, then drop merged PRs from the bottom of the stack and rebase the rest onto the new trunk. `--submit` pushes and retargets afterwards. |
 | `merge` | Merge the bottom PR once it's ready (not a draft, checks green, no changes requested, pushed, based on the default branch), then `sync`. `--method squash\|merge\|rebase`, `--force`, `--submit`. |
 | `pr open [REV]` | Open (or `--print`) the PR for a change; defaults to the stack head. |

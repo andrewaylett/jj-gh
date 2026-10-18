@@ -24,3 +24,14 @@ report `+dirty`.
 
 Because the release build edits `Cargo.toml`, do not pass `--locked` to the
 release build unless `Cargo.lock` is also updated to match.
+
+## Native GitHub stacks
+
+`submit` calls GitHub's stacked pull request REST endpoints (`/repos/{owner}/{repo}/stacks`,
+API version `2026-03-10`, public preview) after the PRs exist. Without that, GitHub only
+offers to create the stack when someone opens a PR. GraphQL is read-only for stacks, so this
+is REST.
+
+Failure is deliberately a warning, not an error: the feature may not be enabled for a
+repository. GitHub keeps merged PRs
+in a stack, so we compare only the open ones against our list.
