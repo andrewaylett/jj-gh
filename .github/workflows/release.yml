@@ -1,4 +1,6 @@
 # Publishes prebuilt binaries to a GitHub release when a `v*` tag is pushed.
+# Each archive also gets a GitHub build-provenance attestation, which mise
+# verifies on install.
 # Asset names follow `jj-gh-<target-triple>.<ext>`, which mise's `github:`
 # backend (and ubi) pick up automatically:
 #
@@ -33,6 +35,8 @@ jobs:
     needs: create-release
     permissions:
       contents: write
+      id-token: write
+      attestations: write
     strategy:
       fail-fast: false
       matrix:
@@ -53,6 +57,7 @@ jobs:
       with:
         persist-credentials: false
     - uses: taiki-e/upload-rust-binary-action@f0d45ae91ee7b8ee928de7a9d04d893a08bcbec6 # v1.30.2
+      id: upload
       with:
         bin: jj-gh
         target: ${{ matrix.target }}
@@ -60,3 +65,8 @@ jobs:
         checksum: sha256
         include: README.md,LICENSE-MIT
         token: ${{ secrets.GITHUB_TOKEN }}
+    # mise's github backend verifies GitHub artifact attestations when
+    # present; the subject digest must match the uploaded archive.
+    - uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2.4.0
+      with:
+        subject-path: ${{ steps.upload.outputs.tar || steps.upload.outputs.zip }}
