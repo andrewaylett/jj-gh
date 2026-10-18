@@ -37,6 +37,7 @@ fn sh(dir: &Path, program: &str, args: &[&str]) -> String {
         .env("GIT_AUTHOR_EMAIL", "test@example.com")
         .env("GIT_COMMITTER_NAME", "Test")
         .env("GIT_COMMITTER_EMAIL", "test@example.com")
+        .env("XDG_CONFIG_HOME", dir.join(".xdg"))
         .output()
         .unwrap_or_else(|e| panic!("{program}: {e}"));
     assert!(
@@ -218,6 +219,7 @@ impl Env {
             .args(["--no-pager", "--color", "never"])
             .args(args)
             .current_dir(self.work())
+            .env("XDG_CONFIG_HOME", self.dir.path().join(".xdg"))
             .env("JJ_USER", "Test")
             .env("JJ_EMAIL", "test@example.com")
             .output()
@@ -234,6 +236,7 @@ impl Env {
         Command::new(env!("CARGO_BIN_EXE_jj-gh"))
             .args(args)
             .current_dir(self.work())
+            .env("XDG_CONFIG_HOME", self.dir.path().join(".xdg"))
             .env("JJ_USER", "Test")
             .env("JJ_EMAIL", "test@example.com")
             .env("JJ_GH_API_URL", &self.mock.url)
