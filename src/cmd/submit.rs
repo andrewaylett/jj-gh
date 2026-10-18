@@ -78,6 +78,21 @@ pub fn run(ctx: &Ctx, args: &Args) -> Result<()> {
     ctx.jj.push(&ctx.remote, &names)?;
 
     // 2. Create or retarget PRs, bottom first so each base exists.
+    // GitHub refuses to change the base of a PR that's in a native stack, so if
+    // anything needs retargeting we dissolve the stack now; step 3 rebuilds it.
+    let retargeting = prs
+        .iter()
+        .enumerate()
+        .any(|(i, pr)| pr.as_ref().is_some_and(|p| p.base_ref_name != base_of(i)));
+    if retargeting {
+        let open: Vec<u64> = prs.iter().flatten().map(|p| p.number).collect();
+        if let Err(e) = unstack_native(&client, &open) {
+            eprintln!(
+                "{} couldn't dissolve GitHub's native stack before retargeting: {e:#}",
+                paint("33", "warning:")
+            );
+        }
+    }
     let mut numbers: Vec<u64> = Vec::new();
     for (i, s) in segments.iter().enumerate() {
         let base = base_of(i);
@@ -126,6 +141,16 @@ pub fn run(ctx: &Ctx, args: &Args) -> Result<()> {
             "{} couldn't update GitHub's native stack: {e:#}",
             paint("33", "warning:")
         );
+    }
+    Ok(())
+}
+
+/// Dissolve the native stack containing any of these PRs, if there is one.
+fn unstack_native(client: &Client, numbers: &[u64]) -> Result<()> {
+    for &n in numbers {
+        if let Some(s) = client.stack_containing(n)? {
+            return client.unstack(s.number);
+        }
     }
     Ok(())
 }
