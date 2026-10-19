@@ -399,14 +399,52 @@ impl Client {
         .map(|_| ())
     }
 
-    pub fn merge_pull_request(&self, number: u64, method: &str) -> Result<()> {
-        self.rest(
+    /// Merge `number` and, if it's in a native stack, every PR below it, in one atomic request.
+    /// The synchronous merge endpoint refuses stacked PRs, so this always goes through
+    /// `merge-async`. `sha` makes GitHub cancel the merge if the branch has moved.
+    pub fn merge_pull_request(&self, number: u64, method: &str, sha: &str) -> Result<MergeOutcome> {
+        let path = format!("/repos/{}/pulls/{number}/merge-async", self.repo.slug());
+        let mut v = self.rest_versioned(
             "PUT",
-            &format!("/repos/{}/pulls/{number}/merge", self.repo.slug()),
-            Some(json!({ "merge_method": method })),
-        )
-        .map(|_| ())
+            &path,
+            Some(json!({ "merge_method": method, "sha": sha })),
+            STACKS_API_VERSION,
+        )?;
+        let deadline = std::time::Instant::now() + MERGE_TIMEOUT;
+        loop {
+            match v["status"].as_str() {
+                Some("merged") => return Ok(MergeOutcome::Merged),
+                Some("enqueued") => return Ok(MergeOutcome::Enqueued),
+                Some("failed") => bail!(
+                    "merging #{number} failed: {}",
+                    v["details"]["message"]
+                        .as_str()
+                        .unwrap_or("no reason given")
+                ),
+                _ => {}
+            }
+            let uuid = v["details"]["uuid"]
+                .as_str()
+                .ok_or_else(|| anyhow!("merge of #{number} returned no request id"))?
+                .to_string();
+            if std::time::Instant::now() > deadline {
+                bail!("timed out waiting for #{number} to merge; check GitHub for the outcome");
+            }
+            std::thread::sleep(Duration::from_secs(1));
+            v = self.rest_versioned("GET", &format!("{path}/{uuid}"), None, STACKS_API_VERSION)?;
+        }
     }
+}
+
+/// How long to wait for GitHub to finish a merge it accepted.
+const MERGE_TIMEOUT: Duration = Duration::from_secs(300);
+
+/// What became of an accepted merge request.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MergeOutcome {
+    Merged,
+    /// Handed to a merge queue: nothing has landed yet.
+    Enqueued,
 }
 
 /// A native GitHub stack, as far as we care: its identifier and the PRs in it, bottom first.

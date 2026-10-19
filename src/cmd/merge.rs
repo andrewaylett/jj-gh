@@ -1,7 +1,7 @@
 use anyhow::{Result, bail};
 
-use super::{Ctx, sync};
-use crate::github::{Client, PrState, PullRequest};
+use super::{Ctx, paint, sync};
+use crate::github::{MergeOutcome, PrState, PullRequest};
 use crate::stack::Segment;
 
 pub struct Args {
@@ -57,81 +57,116 @@ pub fn run(ctx: &Ctx, args: &Args) -> Result<()> {
         bail!("the stack is empty");
     }
     let method = choose_method(args.method.as_deref(), &client.allowed_merge_methods()?)?;
-    let limit = if args.all { segments.len() } else { 1 };
 
-    let mut merged = 0;
-    let mut failure = None;
-    for (i, segment) in segments.iter().take(limit).enumerate() {
-        // Fetched afresh each time: merging the PR below changes what GitHub says about this one.
-        match merge_one(&client, segment, &method, args.force) {
-            Ok(Step::Merged) => merged += 1,
-            // Not the first, so we've done something useful already; just say where we stopped.
-            Ok(Step::Stopped(why)) if i > 0 => {
+    // Only submitted segments can have PRs, and they come first.
+    let limit = if args.all { segments.len() } else { 1 };
+    let submitted: Vec<String> = segments
+        .iter()
+        .take(limit)
+        .take_while(|s| !s.new_bookmark)
+        .map(|s| s.bookmark.clone())
+        .collect();
+    let mut found = client.pull_requests_for(&submitted)?.into_iter();
+
+    let mut ready: Vec<PullRequest> = Vec::new();
+    for segment in segments.iter().take(limit) {
+        let pr = if segment.new_bookmark {
+            None
+        } else {
+            found.next().flatten()
+        };
+        match assess(segment, pr, args.force) {
+            Ok(pr) => ready.push(pr),
+            Err(why) if ready.is_empty() => bail!("{why}"),
+            // We can still merge what's below, so just say where we stopped.
+            Err(why) => {
                 println!("Stopping before {}: {why}", segment.bookmark);
-                break;
-            }
-            Ok(Step::Stopped(why)) => bail!("{why}"),
-            Err(e) => {
-                failure = Some(e);
                 break;
             }
         }
     }
 
-    // Restack even after a failure part-way, so what did merge doesn't leave the stack stale.
-    if merged > 0 {
-        sync::run(
+    // GitHub merges "up to and including" a PR only within a native stack. If these aren't
+    // in one (it may be disabled, or `submit` only warned), merging the top one would land
+    // it on its parent's branch, so settle for the bottom.
+    if ready.len() > 1 {
+        let in_stack = client
+            .stack_containing(ready[0].number)
+            .ok()
+            .flatten()
+            .map(|s| s.open)
+            .unwrap_or_default();
+        let keep = ready
+            .iter()
+            .zip(&in_stack)
+            .take_while(|(pr, n)| pr.number == **n)
+            .count()
+            .max(1);
+        if keep < ready.len() {
+            println!(
+                "{} #{} isn't in the same GitHub stack as the PR below it; merging only up to #{}",
+                paint("33", "warning:"),
+                ready[keep].number,
+                ready[keep - 1].number
+            );
+            ready.truncate(keep);
+        }
+    }
+
+    let top = ready.last().expect("ready is never empty here");
+    for pr in &ready {
+        println!("Merging #{} {} ({method})", pr.number, pr.title);
+    }
+    match client.merge_pull_request(top.number, &method, &top.head_ref_oid)? {
+        MergeOutcome::Enqueued => {
+            println!(
+                "#{} was added to the merge queue; run `jj-gh sync` once it lands",
+                top.number
+            );
+            Ok(())
+        }
+        MergeOutcome::Merged => sync::run(
             ctx,
             &sync::Args {
                 revset: args.revset.clone(),
                 submit: args.submit,
             },
-        )?;
+        ),
     }
-    failure.map_or(Ok(()), Err)
 }
 
-enum Step {
-    Merged,
-    Stopped(String),
-}
-
-fn merge_one(client: &Client, segment: &Segment, method: &str, force: bool) -> Result<Step> {
+/// The PR for `segment` if it's fit to merge, otherwise the reason it isn't.
+fn assess(
+    segment: &Segment,
+    pr: Option<PullRequest>,
+    force: bool,
+) -> std::result::Result<PullRequest, String> {
     if segment.new_bookmark {
-        return Ok(Step::Stopped(format!(
+        return Err(format!(
             "{} hasn't been submitted; run `jj-gh submit`",
             segment.bookmark
-        )));
+        ));
     }
-    let Some(pr) = client
-        .pull_requests_for(std::slice::from_ref(&segment.bookmark))?
-        .remove(0)
-    else {
-        return Ok(Step::Stopped(format!(
+    let Some(pr) = pr else {
+        return Err(format!(
             "no pull request for {}; run `jj-gh submit`",
             segment.bookmark
-        )));
+        ));
     };
     if pr.state != PrState::Open {
-        return Ok(Step::Stopped(format!(
-            "#{} is not open; run `jj-gh sync`",
-            pr.number
-        )));
+        return Err(format!("#{} is not open; run `jj-gh sync`", pr.number));
     }
     if !force {
         let problems = problems(&pr, segment);
         if !problems.is_empty() {
-            return Ok(Step::Stopped(format!(
+            return Err(format!(
                 "#{} isn't ready to merge: {} (use --force to try anyway)",
                 pr.number,
                 problems.join("; ")
-            )));
+            ));
         }
     }
-
-    println!("Merging #{} {} ({method})", pr.number, pr.title);
-    client.merge_pull_request(pr.number, method)?;
-    Ok(Step::Merged)
+    Ok(pr)
 }
 
 #[cfg(test)]
