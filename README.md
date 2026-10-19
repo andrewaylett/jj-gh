@@ -52,7 +52,7 @@ you are. GitHub Enterprise works: the host is taken from the remote's URL.
 | `status` (`st`) | Show the stack with PR numbers, checks, review state, and whether local changes still need pushing or the PR description differs from the change description. |
 | `submit` (`sub`) | Create bookmarks as needed, push, and create or update one PR per change, each based on the one below. Registers the PRs as a native GitHub stack (creating, extending, or rebuilding it as needed; a failure there is only a warning). Idempotent. |
 | `sync` | `jj git fetch`, then drop merged PRs from the bottom of the stack and rebase the rest onto the new trunk. `--submit` pushes the restacked branches afterwards. |
-| `merge` | Merge the bottom PR once it's ready (not a draft, checks green, no changes requested, pushed), then `sync`. `--method squash\|merge\|rebase`, `--force`, `--submit`. |
+| `merge` | Merge the bottom PR once it's ready (not a draft, checks green, no changes requested, pushed), then `sync`. `--method squash\|merge\|rebase` (default: rebase if the repository allows it, else squash, else merge), `--all` merges every PR that's ready, bottom first, stopping at the first that isn't. `--force`, `--submit`. |
 | `pr open [REV]` | Open (or `--print`) the PR for a change; defaults to the stack head. |
 | `pr checkout N` | Fetch a same-repo PR's branch and `jj new` on top of it. |
 | `auth` | Show the credential source and user. |
