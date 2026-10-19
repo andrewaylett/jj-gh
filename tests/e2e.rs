@@ -571,3 +571,28 @@ fn auth_reports_source() {
         "{out}"
     );
 }
+
+#[test]
+fn verbose_records_the_work_without_leaking_the_token() {
+    let Some(env) = setup() else { return };
+    let quiet = env.gh(&["status"]);
+    assert!(quiet.status.success());
+    assert!(quiet.stderr.is_empty(), "{:?}", quiet.stderr);
+
+    // Not a terminal here, so steps arrive as plain lines.
+    let v = env.gh(&["-v", "status"]);
+    let err = String::from_utf8_lossy(&v.stderr);
+    assert!(err.contains("default branch"), "{err}");
+    assert!(!err.contains("GraphQL"), "{err}");
+
+    let vv = env.gh(&["status", "-v", "-v"]);
+    let err = String::from_utf8_lossy(&vv.stderr);
+    assert!(
+        err.contains(&format!("POST {}/graphql", env.mock.url)),
+        "{err}"
+    );
+    assert!(err.contains("→ 200"), "{err}");
+    assert!(err.contains("jj --no-pager"), "{err}");
+    assert!(!err.contains("test-token"), "{err}");
+    assert_eq!(v.stdout, vv.stdout);
+}

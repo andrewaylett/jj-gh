@@ -4,6 +4,8 @@ use std::process::Command;
 
 use anyhow::{Result, bail};
 
+use crate::log;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Token {
     pub value: String,
@@ -25,10 +27,11 @@ pub fn find_token(host: &str) -> Result<Token> {
         }
     }
 
-    match Command::new("gh")
-        .args(["auth", "token", "--hostname", host])
-        .output()
-    {
+    let mut gh = Command::new("gh");
+    gh.args(["auth", "token", "--hostname", host]);
+    let _step = log::step("Asking gh for a token");
+    log::trace(log::command_line(&gh));
+    match gh.output() {
         Ok(out) if out.status.success() => {
             let value = String::from_utf8_lossy(&out.stdout).trim().to_string();
             if value.is_empty() {

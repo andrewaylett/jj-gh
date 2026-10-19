@@ -9,6 +9,8 @@ use std::process::Command;
 use anyhow::{Context, Result, anyhow, bail};
 use serde::Deserialize;
 
+use crate::log;
+
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 pub struct Change {
     #[serde(rename = "change")]
@@ -39,6 +41,17 @@ impl Change {
             .map(|(_, rest)| rest.trim())
             .unwrap_or("")
     }
+}
+
+/// "Running jj git fetch": the subcommand, without its flags and their values.
+fn running(args: &[&str]) -> String {
+    let words: Vec<&str> = args
+        .iter()
+        .copied()
+        .take_while(|a| !a.starts_with('-'))
+        .take(3)
+        .collect();
+    format!("Running jj {}", words.join(" "))
 }
 
 const LOG_TEMPLATE: &str = r#"'{"change":' ++ json(change_id) ++
@@ -74,9 +87,11 @@ impl Jj {
 
     /// Run jj, returning stdout. stderr is surfaced on failure.
     pub fn run(&self, args: &[&str]) -> Result<String> {
-        let out = self
-            .command()
-            .args(args)
+        let mut cmd = self.command();
+        cmd.args(args);
+        let _step = log::step(running(args));
+        log::trace(log::command_line(&cmd));
+        let out = cmd
             .output()
             .context("failed to run `jj` — is it installed and on PATH?")?;
         if !out.status.success() {
@@ -91,9 +106,11 @@ impl Jj {
 
     /// Run jj for its side effects, letting its progress output through.
     pub fn run_visible(&self, args: &[&str]) -> Result<()> {
-        let status = self
-            .command()
-            .args(args)
+        let mut cmd = self.command();
+        cmd.args(args);
+        log::note(running(args));
+        log::trace(log::command_line(&cmd));
+        let status = cmd
             .status()
             .context("failed to run `jj` — is it installed and on PATH?")?;
         if !status.success() {

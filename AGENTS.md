@@ -60,3 +60,20 @@ cancels the merge if the branch moved after we checked readiness.
 
 If the base branch has a merge queue the PR is enqueued rather than merged. We say so and
 stop, without syncing, because nothing has landed yet.
+
+## Verbose output
+
+`--verbose` is a global count (`-v`, `-v -v`) stored in a process-wide atomic by
+`log::set_level`, rather than threaded through `Ctx`, `Jj` and `Client`, because
+those are built in many places and the output is purely diagnostic. Everything goes to
+stderr so stdout stays pipeable.
+
+A `log::Step` is held for as long as we're waiting on something. On a terminal
+it is a status line, erased when the step is dropped or the next message
+arrives, so nothing that prints to stdout may run while a step is alive. Off a
+terminal (or at `-v -v`, where the record matters more than tidiness) a step is
+an ordinary line. Steps wrap the public `Client` methods and `Jj::run`; the
+HTTP layer and `Jj` add the exact request and command line at level 2. Only the
+URL and headers we choose are traced, so the token can't leak.
+`Jj::run_visible` uses a permanent note instead of a step, because jj's own
+progress output follows it on the same stream.

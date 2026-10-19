@@ -7,6 +7,7 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 
 use crate::auth::Token;
+use crate::log;
 use crate::repo::RepoRef;
 
 /// What GitHub assumes when no `X-GitHub-Api-Version` header is sent.
@@ -112,6 +113,14 @@ pub fn api_urls(host: &str) -> (String, String) {
     (api, graphql)
 }
 
+fn trace_response(resp: &ureq::http::Response<ureq::Body>, started: std::time::Instant) {
+    log::trace(format!(
+        "→ {} after {}ms",
+        resp.status(),
+        started.elapsed().as_millis()
+    ));
+}
+
 impl Client {
     pub fn new(repo: RepoRef, token: Token) -> Self {
         let (api, graphql) = api_urls(&repo.host);
@@ -173,6 +182,8 @@ impl Client {
         let url = format!("{}{}", self.api, path);
         let what = format!("{method} {path}");
         let auth = format!("Bearer {}", self.token.value);
+        log::trace(format!("{method} {url} (API version {version})"));
+        let started = std::time::Instant::now();
         let resp = match (method, body) {
             ("GET", _) => self
                 .agent
@@ -212,17 +223,21 @@ impl Client {
             _ => bail!("unsupported request {what}"),
         }
         .with_context(|| format!("{what}: request failed"))?;
+        trace_response(&resp, started);
         self.finish(&what, resp)
     }
 
     fn graphql(&self, query: &str) -> Result<Value> {
         let auth = format!("Bearer {}", self.token.value);
+        log::trace(format!("POST {} (GraphQL)", self.graphql));
+        let started = std::time::Instant::now();
         let resp = self
             .agent
             .post(&self.graphql)
             .header("Authorization", &auth)
             .send_json(json!({ "query": query }))
             .context("GraphQL request failed")?;
+        trace_response(&resp, started);
         let body = self.finish("GraphQL", resp)?;
         if let Some(errors) = body.get("errors").filter(|e| !e.is_null()) {
             let msg = errors
@@ -242,6 +257,7 @@ impl Client {
     }
 
     pub fn viewer_login(&self) -> Result<String> {
+        let _step = log::step("Asking GitHub who we are");
         let data = self.graphql("{ viewer { login } }")?;
         data["viewer"]["login"]
             .as_str()
@@ -250,6 +266,7 @@ impl Client {
     }
 
     pub fn default_branch(&self) -> Result<String> {
+        let _step = log::step(format!("Loading {}'s default branch", self.repo.slug()));
         let q = format!(
             "{{ repository(owner: {}, name: {}) {{ defaultBranchRef {{ name }} }} }}",
             json!(self.repo.owner),
@@ -264,6 +281,7 @@ impl Client {
 
     /// The merge methods the repository permits, as the names the merge endpoint takes.
     pub fn allowed_merge_methods(&self) -> Result<Vec<&'static str>> {
+        let _step = log::step("Loading the merge methods the repository allows");
         let q = format!(
             "{{ repository(owner: {}, name: {}) {{ \
                rebaseMergeAllowed squashMergeAllowed mergeCommitAllowed }} }}",
@@ -287,6 +305,10 @@ impl Client {
         if branches.is_empty() {
             return Ok(vec![]);
         }
+        let _step = log::step(format!(
+            "Loading pull requests for {}",
+            plural(branches.len(), "branch", "branches")
+        ));
         let mut selections = String::new();
         for (i, b) in branches.iter().enumerate() {
             selections.push_str(&format!(
@@ -328,6 +350,7 @@ impl Client {
     }
 
     pub fn pull_request(&self, number: u64) -> Result<PullRequest> {
+        let _step = log::step(format!("Loading #{number}"));
         let q = format!(
             "{{ repository(owner: {}, name: {}) {{ pullRequest(number: {number}) {{ {PR_FIELDS} }} }} }}",
             json!(self.repo.owner),
@@ -343,6 +366,7 @@ impl Client {
 
     /// `owner/name` of the repo a PR's head branch lives in.
     pub fn head_repository(&self, number: u64) -> Result<Option<String>> {
+        let _step = log::step(format!("Loading where #{number} comes from"));
         let q = format!(
             "{{ repository(owner: {}, name: {}) {{ pullRequest(number: {number}) {{ \
              headRepository {{ nameWithOwner }} }} }} }}",
@@ -365,6 +389,7 @@ impl Client {
         base: &str,
         draft: bool,
     ) -> Result<PullRequestRef> {
+        let _step = log::step(format!("Creating a pull request for {head}"));
         let v = self.rest(
             "POST",
             &format!("/repos/{}/pulls", self.repo.slug()),
@@ -376,6 +401,7 @@ impl Client {
     }
 
     pub fn update_pull_request(&self, number: u64, fields: Value) -> Result<()> {
+        let _step = log::step(format!("Updating #{number}"));
         self.rest(
             "PATCH",
             &format!("/repos/{}/pulls/{number}", self.repo.slug()),
@@ -388,6 +414,7 @@ impl Client {
         if reviewers.is_empty() {
             return Ok(());
         }
+        let _step = log::step(format!("Requesting review on #{number}"));
         self.rest(
             "POST",
             &format!(
@@ -404,6 +431,7 @@ impl Client {
     /// `merge-async`. `sha` makes GitHub cancel the merge if the branch has moved.
     pub fn merge_pull_request(&self, number: u64, method: &str, sha: &str) -> Result<MergeOutcome> {
         let path = format!("/repos/{}/pulls/{number}/merge-async", self.repo.slug());
+        let _step = log::step(format!("Merging #{number}"));
         let mut v = self.rest_versioned(
             "PUT",
             &path,
@@ -411,6 +439,7 @@ impl Client {
             STACKS_API_VERSION,
         )?;
         let deadline = std::time::Instant::now() + MERGE_TIMEOUT;
+        let mut waiting = None;
         loop {
             match v["status"].as_str() {
                 Some("merged") => return Ok(MergeOutcome::Merged),
@@ -429,6 +458,10 @@ impl Client {
                 .to_string();
             if std::time::Instant::now() > deadline {
                 bail!("timed out waiting for #{number} to merge; check GitHub for the outcome");
+            }
+            // Once, so a slow merge doesn't fill a log with one line a second.
+            if waiting.is_none() {
+                waiting = Some(log::step(format!("Waiting for GitHub to merge #{number}")));
             }
             std::thread::sleep(Duration::from_secs(1));
             v = self.rest_versioned("GET", &format!("{path}/{uuid}"), None, STACKS_API_VERSION)?;
@@ -480,6 +513,7 @@ impl Client {
 
     /// The native stack containing `pr`, if there is one.
     pub fn stack_containing(&self, pr: u64) -> Result<Option<Stack>> {
+        let _step = log::step(format!("Looking for the stack containing #{pr}"));
         let v = self.rest_versioned(
             "GET",
             &self.stacks_path(&format!("?pull_request={pr}")),
@@ -494,6 +528,7 @@ impl Client {
 
     /// Create a stack from PRs ordered bottom to top.
     pub fn create_stack(&self, pull_requests: &[u64]) -> Result<()> {
+        let _step = log::step("Creating a stack");
         self.rest_versioned(
             "POST",
             &self.stacks_path(""),
@@ -505,6 +540,7 @@ impl Client {
 
     /// Append PRs, ordered upward from the current top of the stack.
     pub fn add_to_stack(&self, stack: u64, pull_requests: &[u64]) -> Result<()> {
+        let _step = log::step(format!("Adding to stack {stack}"));
         self.rest_versioned(
             "POST",
             &self.stacks_path(&format!("/{stack}/add")),
@@ -516,6 +552,7 @@ impl Client {
 
     /// Remove every unmerged PR from the stack, dissolving it.
     pub fn unstack(&self, stack: u64) -> Result<()> {
+        let _step = log::step(format!("Dissolving stack {stack}"));
         self.rest_versioned(
             "POST",
             &self.stacks_path(&format!("/{stack}/unstack")),
@@ -524,6 +561,10 @@ impl Client {
         )
         .map(|_| ())
     }
+}
+
+fn plural(n: usize, one: &str, many: &str) -> String {
+    format!("{n} {}", if n == 1 { one } else { many })
 }
 
 #[derive(Debug, Clone)]
