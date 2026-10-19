@@ -80,12 +80,16 @@ enum Command {
     Merge {
         #[arg(short, long)]
         revision: Option<String>,
-        /// Merge method.
-        #[arg(long, default_value = "squash", value_parser = ["squash", "merge", "rebase"])]
-        method: String,
+        /// Merge method. Defaults to rebase, or the first of squash and merge the
+        /// repository allows if rebase isn't enabled.
+        #[arg(long, value_parser = ["squash", "merge", "rebase"])]
+        method: Option<String>,
         /// Skip readiness checks (draft, CI, reviews, unpushed changes).
         #[arg(long)]
         force: bool,
+        /// Merge as many PRs as are ready, bottom first, rather than only the bottom one.
+        #[arg(long)]
+        all: bool,
         /// Run `submit` after syncing, to push the rest of the stack.
         #[arg(long)]
         submit: bool,
@@ -161,6 +165,7 @@ fn run() -> Result<()> {
             revision,
             method,
             force,
+            all,
             submit,
         } => cmd::merge::run(
             &ctx,
@@ -168,6 +173,7 @@ fn run() -> Result<()> {
                 revset: revision,
                 method,
                 force,
+                all,
                 submit,
             },
         ),

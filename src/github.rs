@@ -262,6 +262,26 @@ impl Client {
             .ok_or_else(|| anyhow!("repository {} has no default branch", self.repo.slug()))
     }
 
+    /// The merge methods the repository permits, as the names the merge endpoint takes.
+    pub fn allowed_merge_methods(&self) -> Result<Vec<&'static str>> {
+        let q = format!(
+            "{{ repository(owner: {}, name: {}) {{ \
+               rebaseMergeAllowed squashMergeAllowed mergeCommitAllowed }} }}",
+            json!(self.repo.owner),
+            json!(self.repo.name)
+        );
+        let repo = &self.graphql(&q)?["repository"];
+        Ok([
+            ("rebaseMergeAllowed", "rebase"),
+            ("squashMergeAllowed", "squash"),
+            ("mergeCommitAllowed", "merge"),
+        ]
+        .into_iter()
+        .filter(|(field, _)| repo[field].as_bool() == Some(true))
+        .map(|(_, name)| name)
+        .collect())
+    }
+
     /// For each head branch, the most recent PR from it (open preferred).
     pub fn pull_requests_for(&self, branches: &[String]) -> Result<Vec<Option<PullRequest>>> {
         if branches.is_empty() {

@@ -68,7 +68,14 @@ fn squash_merge(bare: &Path, scratch: &Path, head: &str, title: &str) {
     sh(
         &work,
         "git",
-        &["merge", "--squash", &format!("origin/{head}")],
+        // Override any `merge.ff=only` in the user's own config: main may have moved on.
+        &[
+            "-c",
+            "merge.ff=true",
+            "merge",
+            "--squash",
+            &format!("origin/{head}"),
+        ],
     );
     sh(&work, "git", &["commit", "-q", "-m", title]);
     sh(&work, "git", &["push", "-q", "origin", "main"]);
@@ -153,6 +160,7 @@ fn start_mock(bare: PathBuf, scratch: PathBuf) -> Mock {
                 }
                 ("PUT", p) if p.ends_with("/merge") => {
                     let n: u64 = p.split('/').rev().nth(1).unwrap().parse().unwrap();
+                    assert_eq!(json_body["merge_method"], "rebase");
                     let pr = st.prs.get_mut(&n).unwrap();
                     squash_merge(&bare, &scratch, &pr.head, &format!("{} (#{n})", pr.title));
                     pr.state = "MERGED";
@@ -214,6 +222,11 @@ fn graphql(st: &State, bare: &Path, q: &str) -> Value {
     }
     if q.contains("defaultBranchRef") {
         return json!({"data": {"repository": {"defaultBranchRef": {"name": "main"}}}});
+    }
+    if q.contains("rebaseMergeAllowed") {
+        return json!({"data": {"repository": {
+            "rebaseMergeAllowed": true, "squashMergeAllowed": true, "mergeCommitAllowed": true,
+        }}});
     }
     let mut repo = serde_json::Map::new();
     if let Some(i) = q.find("pullRequest(number: ") {
@@ -386,6 +399,28 @@ fn setup() -> Option<Env> {
     );
     let mock = start_mock(bare, root.to_path_buf());
     Some(Env { dir, mock })
+}
+
+#[test]
+fn merge_all_lands_the_whole_ready_stack() {
+    let Some(env) = setup() else { return };
+    env.change("a.txt", "Add a");
+    env.change("b.txt", "Add b");
+    env.gh_ok(&["submit"]);
+
+    let out = env.gh_ok(&["merge", "--all"]);
+    assert_eq!(out.matches("Merging #").count(), 2, "{out}");
+    let prs = env.prs();
+    assert!(prs.values().all(|p| p.state == "MERGED"), "{prs:#?}");
+    let log = env.jj(&[
+        "log",
+        "--no-graph",
+        "-r",
+        "trunk()..@ ~ empty()",
+        "-T",
+        "description.first_line() ++ \"\\n\"",
+    ]);
+    assert_eq!(log.trim(), "", "stack after merge --all:\n{log}");
 }
 
 #[test]
