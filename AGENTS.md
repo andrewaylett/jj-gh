@@ -35,3 +35,7 @@ is REST.
 Failure is deliberately a warning, not an error: the feature may not be enabled for a
 repository. GitHub keeps merged PRs
 in a stack, so we compare only the open ones against our list.
+
+GitHub retargets the PRs above a merged one at its base, so `merge` and `sync` don't
+check or fix bases. `submit` still dissolves the stack before retargeting, because that
+covers us changing the shape of the stack (inserting or reordering changes), not merges.

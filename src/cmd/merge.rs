@@ -36,12 +36,6 @@ pub fn run(ctx: &Ctx, args: &Args) -> Result<()> {
 
     if !args.force {
         let mut problems = Vec::new();
-        if pr.base_ref_name != default_branch {
-            problems.push(format!(
-                "its base is {}, not {default_branch}",
-                pr.base_ref_name
-            ));
-        }
         if pr.head_ref_oid != bottom.head().commit_id {
             problems.push("local changes haven't been pushed (run `jj-gh submit`)".to_string());
         }
