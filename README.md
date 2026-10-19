@@ -57,8 +57,12 @@ you are. GitHub Enterprise works: the host is taken from the remote's URL.
 | `pr checkout N` | Fetch a same-repo PR's branch and `jj new` on top of it. |
 | `auth` | Show the credential source and user. |
 
-Common flags: `-r/--revision` picks the stack (default `trunk()..@`, ignoring
-an empty undescribed working copy); `-n/--dry-run` on `submit`; `--draft`;
+Common flags: `-r/--revision` picks the stack. By default the bookmarks on `@`
+(then on its parents) are looked up, and the first one whose open PR is in a
+native GitHub stack gives the whole stack, even when `@` is part-way up it. A
+pushable `@` above the stack is included; one that `jj git push` would refuse
+(undescribed, conflicted, or private) is left out. If there's no such stack, the
+default is `trunk()..@`, again leaving out an unpushable `@`; `-n/--dry-run` on `submit`; `--draft`;
 `--reviewer LOGIN`; `--update-description` to push edited change descriptions
 to existing PRs (otherwise titles and bodies you've edited on GitHub are left
 alone).

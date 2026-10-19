@@ -7,7 +7,7 @@ use crate::stack::Segment;
 pub fn run(ctx: &Ctx, revset: Option<&str>) -> Result<()> {
     let client = ctx.client()?;
     let default_branch = client.default_branch()?;
-    let segments = ctx.segments(revset, &default_branch)?;
+    let segments = ctx.segments(&client, revset, &default_branch)?;
     if segments.is_empty() {
         println!("No changes between trunk and the working copy.");
         return Ok(());

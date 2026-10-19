@@ -216,6 +216,23 @@ fn graphql(st: &State, bare: &Path, q: &str) -> Value {
         return json!({"data": {"repository": {"defaultBranchRef": {"name": "main"}}}});
     }
     let mut repo = serde_json::Map::new();
+    if let Some(i) = q.find("pullRequest(number: ") {
+        let n: u64 = q[i + "pullRequest(number: ".len()..]
+            .split(')')
+            .next()
+            .unwrap()
+            .parse()
+            .unwrap();
+        let p = &st.prs[&n];
+        return json!({"data": {"repository": {"pullRequest": {
+            "number": p.number, "title": p.title, "body": p.body,
+            "url": format!("https://example.test/o/r/pull/{n}"),
+            "state": p.state, "isDraft": false,
+            "baseRefName": p.base, "headRefName": p.head, "headRefOid": "",
+            "reviewDecision": null, "mergeable": "MERGEABLE",
+            "commits": {"nodes": []},
+        }}}});
+    }
     let mut rest = q;
     while let Some(i) = rest.find("pullRequests(headRefName: ") {
         let alias = rest[..i]
@@ -455,6 +472,30 @@ fn per_change_and_update_description() {
     env.gh_ok(&["submit", "--update-description"]);
     assert_eq!(env.prs()[&1].title, "Add a, better");
     assert!(!env.gh_ok(&["status"]).contains("description differs"));
+}
+
+#[test]
+fn finds_the_native_stack_from_mid_stack() {
+    let Some(env) = setup() else { return };
+    env.change("a.txt", "Add a");
+    env.change("b.txt", "Add b");
+    env.change("c.txt", "Add c");
+    env.gh_ok(&["submit"]);
+    assert_eq!(env.prs().len(), 3);
+
+    // Sitting on the bottom change, the working-copy revset would only see #1.
+    env.jj(&["edit", "description(exact:\"Add a\\n\")"]);
+    let status = env.gh_ok(&["status"]);
+    for n in ["#1", "#2", "#3"] {
+        assert!(status.contains(n), "{status}");
+    }
+
+    // A fresh, undescribed change on top is left out, and the stack still found.
+    env.jj(&["new", "description(exact:\"Add c\\n\")"]);
+    let status = env.gh_ok(&["status"]);
+    assert!(status.contains("#3") && !status.contains("new"), "{status}");
+    assert!(env.gh_ok(&["submit"]).contains("up to date"));
+    assert_eq!(env.prs().len(), 3);
 }
 
 #[test]

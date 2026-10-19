@@ -119,6 +119,18 @@ impl Jj {
             .collect()
     }
 
+    /// A revset for the changes `jj git push` refuses: undescribed or
+    /// conflicted ones, plus whatever `git.private-commits` selects.
+    pub fn unpushable_revset(&self) -> String {
+        let private = self
+            .run(&["config", "get", "git.private-commits"])
+            .map(|s| s.trim().to_string())
+            .ok()
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| "none()".to_string());
+        format!("(description(exact:\"\") | conflicts() | ({private}))")
+    }
+
     pub fn remote_url(&self, remote: &str) -> Result<String> {
         let out = self.run(&["git", "remote", "list"])?;
         out.lines()

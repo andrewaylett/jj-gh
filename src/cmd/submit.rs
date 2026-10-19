@@ -16,7 +16,7 @@ pub struct Args {
 pub fn run(ctx: &Ctx, args: &Args) -> Result<()> {
     let client = ctx.client()?;
     let default_branch = client.default_branch()?;
-    let segments = ctx.segments(args.revset.as_deref(), &default_branch)?;
+    let segments = ctx.segments(&client, args.revset.as_deref(), &default_branch)?;
     if segments.is_empty() {
         println!("Nothing to submit: no changes between trunk and the working copy.");
         return Ok(());
