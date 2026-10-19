@@ -44,3 +44,19 @@ Finding the stack to act on works the same way: without `-r`, `Ctx::segments` fi
 the bookmarks on `@` (if jj would push it) and then on `@-`, asks GitHub which stack their open
 PRs are in, and takes the first it finds. Any failure in that lookup is a warning and we fall
 back to `trunk()..@`, for the same reason as above.
+
+## Merging
+
+GitHub refuses to merge a PR that's in a native stack through the classic `PUT .../merge`
+endpoint, so `merge` uses `PUT .../merge-async` (API version `2026-03-10`) and polls the
+result. That endpoint merges the named PR *and every PR below it* in one atomic request,
+which is what the web UI's "merge up to here" does, so `merge --all` is a single request for
+the topmost ready PR rather than a loop.
+
+That is only safe when the PRs really are in one native stack: otherwise the top PR would
+land on its parent's branch. `merge` checks with `stack_containing` and falls back to the
+bottom PR, with a warning, if they aren't. The request carries the PR's head SHA so GitHub
+cancels the merge if the branch moved after we checked readiness.
+
+If the base branch has a merge queue the PR is enqueued rather than merged. We say so and
+stop, without syncing, because nothing has landed yet.

@@ -158,18 +158,33 @@ fn start_mock(bare: PathBuf, scratch: PathBuf) -> Mock {
                     st.stacks[i].clear();
                     (204, Value::Null)
                 }
-                ("PUT", p) if p.ends_with("/merge") => {
+                ("PUT", p) if p.ends_with("/merge-async") => {
                     let n: u64 = p.split('/').rev().nth(1).unwrap().parse().unwrap();
                     assert_eq!(json_body["merge_method"], "rebase");
-                    let pr = st.prs.get_mut(&n).unwrap();
-                    squash_merge(&bare, &scratch, &pr.head, &format!("{} (#{n})", pr.title));
-                    pr.state = "MERGED";
-                    // GitHub retargets the PRs stacked on a merged one at its base.
-                    let (head, base) = (pr.head.clone(), pr.base.clone());
-                    for other in st.prs.values_mut().filter(|o| o.base == head) {
-                        other.base = base.clone();
+                    // Like GitHub: everything below `n` in its stack goes too, bottom first.
+                    let mut chain = vec![n];
+                    while let Some(below) = st
+                        .prs
+                        .values()
+                        .find(|o| o.state == "OPEN" && o.head == st.prs[&chain[0]].base)
+                    {
+                        let below = below.number;
+                        chain.insert(0, below);
                     }
-                    (200, json!({"merged": true}))
+                    for m in chain {
+                        let pr = st.prs.get_mut(&m).unwrap();
+                        squash_merge(&bare, &scratch, &pr.head, &format!("{} (#{m})", pr.title));
+                        pr.state = "MERGED";
+                        // GitHub retargets the PRs stacked on a merged one at its base.
+                        let (head, base) = (pr.head.clone(), pr.base.clone());
+                        for other in st.prs.values_mut().filter(|o| o.base == head) {
+                            other.base = base.clone();
+                        }
+                    }
+                    (202, json!({"status": "pending", "details": {"uuid": "u1"}}))
+                }
+                ("GET", p) if p.ends_with("/merge-async/u1") => {
+                    (200, json!({"status": "merged", "details": {"sha": "x"}}))
                 }
                 _ => (
                     404,
