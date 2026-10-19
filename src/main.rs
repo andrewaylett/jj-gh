@@ -2,6 +2,7 @@ mod auth;
 mod cmd;
 mod github;
 mod jj;
+mod log;
 mod repo;
 mod stack;
 
@@ -36,6 +37,11 @@ struct Cli {
     /// head), instead of making one PR per change.
     #[arg(long, global = true, env = "JJ_GH_BY_BOOKMARK")]
     by_bookmark: bool,
+
+    /// Say what is being done. Repeat (`-v -v`) to print the jj commands and
+    /// HTTP requests as well.
+    #[arg(short, long, global = true, action = clap::ArgAction::Count)]
+    verbose: u8,
 
     #[command(subcommand)]
     command: Command,
@@ -128,6 +134,7 @@ fn main() {
 
 fn run() -> Result<()> {
     let cli = Cli::parse();
+    log::set_level(cli.verbose);
     let ctx = Ctx {
         jj: jj::Jj {
             repository: cli.repository,

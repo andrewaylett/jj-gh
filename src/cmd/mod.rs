@@ -7,6 +7,7 @@ use anyhow::Result;
 use crate::auth;
 use crate::github::{Client, PrState};
 use crate::jj::Jj;
+use crate::log;
 use crate::repo::RepoRef;
 use crate::stack::{self, Options, Segment};
 
@@ -73,7 +74,8 @@ impl Ctx {
                 &fallback
             }
         };
-        stack::load(
+        log::note(format!("Loading the stack from {revset}"));
+        let segments = stack::load(
             &self.jj,
             &Options {
                 revset,
@@ -81,7 +83,15 @@ impl Ctx {
                 prefix: &prefix,
                 exclude: &exclude,
             },
-        )
+        )?;
+        log::note(format!(
+            "Found {} in the stack",
+            match segments.len() {
+                1 => "1 pull request".to_string(),
+                n => format!("{n} pull requests"),
+            }
+        ));
+        Ok(segments)
     }
 }
 
