@@ -39,3 +39,8 @@ in a stack, so we compare only the open ones against our list.
 GitHub retargets the PRs above a merged one at its base, so `merge` and `sync` don't
 check or fix bases. `submit` still dissolves the stack before retargeting, because that
 covers us changing the shape of the stack (inserting or reordering changes), not merges.
+
+Finding the stack to act on works the same way: without `-r`, `Ctx::segments` first looks at
+the bookmarks on `@` (if jj would push it) and then on `@-`, asks GitHub which stack their open
+PRs are in, and takes the first it finds. Any failure in that lookup is a warning and we fall
+back to `trunk()..@`, for the same reason as above.

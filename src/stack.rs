@@ -6,8 +6,10 @@ use anyhow::{Result, bail};
 use crate::github::PullRequest;
 use crate::jj::{Change, Jj};
 
-/// Changes `trunk()..@`, ignoring an empty, undescribed working copy.
-pub const DEFAULT_REVSET: &str = "trunk()..@ ~ (@ & empty() & description(exact:\"\"))";
+/// Changes `trunk()..@`, leaving out `@` if `jj git push` would refuse it.
+pub fn default_revset(jj: &Jj) -> String {
+    format!("trunk()..@ ~ (@ & {})", jj.unpushable_revset())
+}
 
 #[derive(Debug, Clone)]
 pub struct Segment {

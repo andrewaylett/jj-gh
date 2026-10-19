@@ -8,7 +8,7 @@ use super::Ctx;
 pub fn open(ctx: &Ctx, rev: Option<&str>, print_only: bool) -> Result<()> {
     let client = ctx.client()?;
     let default_branch = client.default_branch()?;
-    let segments = ctx.segments(None, &default_branch)?;
+    let segments = ctx.segments(&client, None, &default_branch)?;
 
     let segment = match rev {
         None => segments.iter().rev().find(|s| !s.new_bookmark),

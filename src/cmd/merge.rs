@@ -14,7 +14,7 @@ pub struct Args {
 pub fn run(ctx: &Ctx, args: &Args) -> Result<()> {
     let client = ctx.client()?;
     let default_branch = client.default_branch()?;
-    let segments = ctx.segments(args.revset.as_deref(), &default_branch)?;
+    let segments = ctx.segments(&client, args.revset.as_deref(), &default_branch)?;
     let Some(bottom) = segments.first() else {
         bail!("the stack is empty");
     };
