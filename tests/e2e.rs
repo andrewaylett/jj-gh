@@ -156,6 +156,11 @@ fn start_mock(bare: PathBuf, scratch: PathBuf) -> Mock {
                     let pr = st.prs.get_mut(&n).unwrap();
                     squash_merge(&bare, &scratch, &pr.head, &format!("{} (#{n})", pr.title));
                     pr.state = "MERGED";
+                    // GitHub retargets the PRs stacked on a merged one at its base.
+                    let (head, base) = (pr.head.clone(), pr.base.clone());
+                    for other in st.prs.values_mut().filter(|o| o.base == head) {
+                        other.base = base.clone();
+                    }
                     (200, json!({"merged": true}))
                 }
                 _ => (
@@ -427,10 +432,10 @@ fn submit_merge_and_restack() {
         "restacked onto the squash commit: {parent}"
     );
 
-    // Submitting again retargets the survivor at main.
+    // GitHub has already retargeted the survivor at main; submit just pushes.
+    assert_eq!(env.prs()[&2].base, "main");
     env.gh_ok(&["submit"]);
-    let pr2 = &env.prs()[&2];
-    assert_eq!(pr2.base, "main");
+    assert_eq!(env.prs()[&2].base, "main");
 }
 
 #[test]

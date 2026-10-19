@@ -72,7 +72,7 @@ enum Command {
     Sync {
         #[arg(short, long)]
         revision: Option<String>,
-        /// Run `submit` afterwards to push and retarget.
+        /// Run `submit` afterwards to push the restacked branches.
         #[arg(long)]
         submit: bool,
     },
@@ -83,10 +83,10 @@ enum Command {
         /// Merge method.
         #[arg(long, default_value = "squash", value_parser = ["squash", "merge", "rebase"])]
         method: String,
-        /// Skip readiness checks (draft, CI, reviews, base, unpushed changes).
+        /// Skip readiness checks (draft, CI, reviews, unpushed changes).
         #[arg(long)]
         force: bool,
-        /// Run `submit` after syncing, to push and retarget the rest of the stack.
+        /// Run `submit` after syncing, to push the rest of the stack.
         #[arg(long)]
         submit: bool,
     },

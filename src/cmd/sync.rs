@@ -91,7 +91,7 @@ pub fn run(ctx: &Ctx, args: &Args) -> Result<()> {
         )
     } else {
         if segments.len() > merged_prefix {
-            println!("Run `jj-gh submit` to push the restacked branches and retarget PRs.");
+            println!("Run `jj-gh submit` to push the restacked branches.");
         }
         Ok(())
     }
