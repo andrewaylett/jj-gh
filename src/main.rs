@@ -38,8 +38,8 @@ struct Cli {
     #[arg(long, global = true, env = "JJ_GH_BY_BOOKMARK")]
     by_bookmark: bool,
 
-    /// Say what is being done. Repeat (`-v -v`) to print the jj commands and
-    /// HTTP requests as well.
+    /// Keep a record of what is being done, instead of only showing progress on
+    /// a terminal. Repeat (`-v -v`) to print the jj commands and HTTP requests too.
     #[arg(short, long, global = true, action = clap::ArgAction::Count)]
     verbose: u8,
 
