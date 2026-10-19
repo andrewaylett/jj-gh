@@ -4,7 +4,7 @@
 # Asset names follow `jj-gh-<target-triple>.<ext>`, which mise's `github:`
 # backend (and ubi) pick up automatically:
 #
-#   mise use -g github:andrewaylett/jj-gh
+#   mise use -g packslip:andrewaylett/jj-gh
 name: Release
 
 on:
