@@ -61,6 +61,9 @@ fn print_segment(seg: &Segment, pr: Option<&PullRequest>, expected_base: &str) {
                 &format!("base is {}, expected {expected_base}", pr.base_ref_name),
             ));
         }
+        if !seg.description_matches(pr) {
+            notes.push(paint("33", "description differs"));
+        }
     }
     let marker = match pr.map(|p| p.state) {
         Some(PrState::Merged) => paint("35", "✔"),
