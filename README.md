@@ -22,10 +22,11 @@ $ jj-gh status
 
 ## Install
 
-With [mise](https://mise.jdx.dev) (installs a prebuilt binary from the GitHub release):
+With [mise](https://mise.jdx.dev) (installs a prebuilt binary from the GitHub release,
+verified against its signed packslip manifest):
 
 ```sh
-mise use -g github:andrewaylett/jj-gh
+mise use -g packslip:andrewaylett/jj-gh@0.2.0
 ```
 
 Or from source: `cargo install --git https://github.com/andrewaylett/jj-gh`.
@@ -131,16 +132,4 @@ git tag v0.1.0 && git push origin v0.1.0
 
 The release workflow builds Linux (x86_64/aarch64, musl), macOS (x86_64/arm64)
 and Windows binaries, attaches them with SHA-256 checksums to a GitHub release
-named after the tag, and mise's `github:` backend picks them up by platform.
-
-### Version reported by `--version`
-
-| Build                         | Example                  |
-| ----------------------------- | ------------------------ |
-| Release (exact tag)           | `0.1.0`                  |
-| Commits after the nearest tag | `0.1.0+4.gabc1234`       |
-| Uncommitted changes           | `0.1.0+4.gabc1234.dirty` |
-| No `v*` tags, or no git       | `0.0.0+gabc1234`, `0.0.0` |
-
-Everything after `+` is semver build metadata. `Cargo.toml` holds the
-placeholder `0.0.0`, which only shows when there is no tag to describe.
+named after the tag, and mise's `packslip:` backend picks them up by platform.

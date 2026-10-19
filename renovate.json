@@ -3,5 +3,17 @@
   "extends": [
     "config:recommended",
     "github>andrewaylett/renovate-config"
+  ],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "The released version of jj-gh named in the install instructions",
+      "managerFilePatterns": ["/^README\\.md$/"],
+      "matchStrings": [
+        "mise use -g packslip:(?<depName>andrewaylett/jj-gh)@(?<currentValue>\\d+\\.\\d+\\.\\d+)"
+      ],
+      "datasourceTemplate": "github-releases",
+      "extractVersionTemplate": "^v(?<version>.*)$"
+    }
   ]
 }
