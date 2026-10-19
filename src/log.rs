@@ -1,10 +1,10 @@
 //! Progress reporting for `--verbose`. Everything here goes to stderr, so
 //! stdout stays clean for output meant to be piped.
 //!
-//! Level 1 reports each piece of work as we start it. On a terminal that is a
-//! status line which the next message, or dropping its [`Step`], overwrites;
-//! elsewhere it is an ordinary line, so logs keep the full record. Level 2 also
-//! prints the `jj` command lines and the HTTP requests we make.
+//! Without `--verbose`, a terminal gets each piece of work as a status line which
+//! the next message, or dropping its [`Step`], overwrites; anything else gets
+//! nothing. At level 1 those same messages are kept as ordinary lines. Level 2
+//! also prints the `jj` command lines and the HTTP requests we make.
 
 use std::io::{IsTerminal, Write};
 use std::process::Command;
@@ -47,9 +47,9 @@ impl Drop for Step {
 /// Say what we're about to wait for. Hold the result until the work is done.
 pub fn step(msg: impl AsRef<str>) -> Step {
     let msg = msg.as_ref();
-    if level() >= 2 || (level() >= 1 && !live()) {
+    if level() >= 1 {
         note(msg);
-    } else if level() >= 1 {
+    } else if live() {
         erase();
         let shown: String = msg.chars().take(MAX_STATUS_WIDTH).collect();
         eprint!("{shown}");

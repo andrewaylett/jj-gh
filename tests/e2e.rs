@@ -579,7 +579,7 @@ fn verbose_records_the_work_without_leaking_the_token() {
     assert!(quiet.status.success());
     assert!(quiet.stderr.is_empty(), "{:?}", quiet.stderr);
 
-    // Not a terminal here, so steps arrive as plain lines.
+    // Steps become plain lines.
     let v = env.gh(&["-v", "status"]);
     let err = String::from_utf8_lossy(&v.stderr);
     assert!(err.contains("default branch"), "{err}");

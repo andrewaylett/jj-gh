@@ -57,9 +57,9 @@ you are. GitHub Enterprise works: the host is taken from the remote's URL.
 | `pr checkout N` | Fetch a same-repo PR's branch and `jj new` on top of it. |
 | `auth` | Show the credential source and user. |
 
-Common flags: `-v/--verbose` (on every command) says what is being done: on a
-terminal as a status line that each step overwrites, otherwise as plain lines on
-stderr. `-v -v` also prints every `jj` command line and HTTP request (method,
+Common flags: `-v/--verbose` (on every command): on a terminal, progress always
+shows as a status line that each step overwrites. `-v` keeps those steps as plain
+lines on stderr instead, as a record. `-v -v` also prints every `jj` command line and HTTP request (method,
 URL, status, time), never the token. `-r/--revision` picks the stack. By default the bookmarks on `@`
 (then on its parents) are looked up, and the first one whose open PR is in a
 native GitHub stack gives the whole stack, even when `@` is part-way up it. A
