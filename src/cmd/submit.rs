@@ -116,6 +116,12 @@ pub fn run(ctx: &Ctx, args: &Args) -> Result<()> {
                     &pr.url,
                     s,
                 );
+                if !args.update_description && !s.description_matches(pr) {
+                    println!(
+                        "  {} description differs from the change; use --update-description to overwrite it",
+                        paint("33", "note:")
+                    );
+                }
                 numbers.push(pr.number);
             }
             None => {

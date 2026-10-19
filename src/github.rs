@@ -36,6 +36,8 @@ pub enum PrState {
 pub struct PullRequest {
     pub number: u64,
     pub title: String,
+    #[serde(default)]
+    pub body: String,
     pub url: String,
     pub state: PrState,
     pub is_draft: bool,
@@ -49,7 +51,7 @@ pub struct PullRequest {
     pub checks: Option<String>,
 }
 
-const PR_FIELDS: &str = "number title url state isDraft baseRefName headRefName \
+const PR_FIELDS: &str = "number title body url state isDraft baseRefName headRefName \
     headRefOid reviewDecision mergeable \
     commits(last: 1) { nodes { commit { statusCheckRollup { state } } } }";
 

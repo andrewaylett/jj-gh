@@ -447,8 +447,14 @@ fn per_change_and_update_description() {
     assert_eq!(env.prs().len(), 2);
 
     env.jj(&["describe", "-r", "@--", "-m", "Add a, better"]);
+    assert!(env.gh_ok(&["status"]).contains("description differs"));
+    let out = env.gh_ok(&["submit"]);
+    assert!(out.contains("description differs"), "{out}");
+    assert_eq!(env.prs()[&1].title, "Add a");
+
     env.gh_ok(&["submit", "--update-description"]);
     assert_eq!(env.prs()[&1].title, "Add a, better");
+    assert!(!env.gh_ok(&["status"]).contains("description differs"));
 }
 
 #[test]

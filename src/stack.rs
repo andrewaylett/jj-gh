@@ -3,6 +3,7 @@
 
 use anyhow::{Result, bail};
 
+use crate::github::PullRequest;
 use crate::jj::{Change, Jj};
 
 /// Changes `trunk()..@`, ignoring an empty, undescribed working copy.
@@ -39,6 +40,14 @@ impl Segment {
             }
         }
         body
+    }
+
+    /// Whether the PR's title and body are what `submit --update-description`
+    /// would write. Line endings and surrounding whitespace don't count, since
+    /// GitHub's web editor normalises them.
+    pub fn description_matches(&self, pr: &PullRequest) -> bool {
+        let norm = |s: &str| s.replace("\r\n", "\n").trim().to_string();
+        norm(&pr.title) == norm(self.title()) && norm(&pr.body) == norm(&self.pr_body())
     }
 }
 
@@ -159,6 +168,28 @@ mod tests {
         assert_eq!(segs[0].changes.len(), 2);
         assert!(segs[1].new_bookmark);
         assert!(segs[1].bookmark.starts_with("push-ckkk"));
+    }
+
+    fn pr(title: &str, body: &str) -> PullRequest {
+        serde_json::from_value(serde_json::json!({
+            "number": 1, "title": title, "body": body, "url": "", "state": "OPEN",
+            "isDraft": false, "baseRefName": "main", "headRefName": "b",
+            "headRefOid": "a", "reviewDecision": null, "mergeable": null,
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn description_comparison_ignores_line_endings_and_padding() {
+        let segs = segment(
+            vec![ch("a", "root", "one\n\nbody text\n", &[])],
+            &opts(false),
+        )
+        .unwrap();
+        assert!(segs[0].description_matches(&pr("one", "body text")));
+        assert!(segs[0].description_matches(&pr("one", "body text\r\n")));
+        assert!(!segs[0].description_matches(&pr("one", "other")));
+        assert!(!segs[0].description_matches(&pr("two", "body text")));
     }
 
     #[test]
