@@ -1,19 +1,21 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": [
-    "config:recommended",
-    "github>andrewaylett/renovate-config"
-  ],
   "customManagers": [
     {
       "customType": "regex",
+      "datasourceTemplate": "github-releases",
       "description": "The released version of jj-gh named in the install instructions",
-      "managerFilePatterns": ["/^README\\.md$/"],
+      "extractVersionTemplate": "^v(?<version>.*)$",
+      "managerFilePatterns": [
+        "/^README\\.md$/"
+      ],
       "matchStrings": [
         "mise use -g packslip:(?<depName>andrewaylett/jj-gh)@(?<currentValue>\\d+\\.\\d+\\.\\d+)"
-      ],
-      "datasourceTemplate": "github-releases",
-      "extractVersionTemplate": "^v(?<version>.*)$"
+      ]
     }
+  ],
+  "extends": [
+    "config:recommended",
+    "github>andrewaylett/renovate-config"
   ]
 }
