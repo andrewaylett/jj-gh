@@ -92,7 +92,8 @@ rewrites because it follows the change.
 With `--by-bookmark` (or `JJ_GH_BY_BOOKMARK=1`) a PR instead spans everything
 from the previous bookmark up to the next one, and the head of the stack gets a
 bookmark if it doesn't have one. PR title and description come from the
-head change's description.
+head change's description, without a closing block made up entirely of
+`Co-Authored-By:` trailers, which GitHub drops when it creates a PR.
 
 The stack has to be a single linear chain of described, conflict-free changes.
 

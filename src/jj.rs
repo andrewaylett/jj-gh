@@ -34,13 +34,29 @@ impl Change {
         self.description.lines().next().unwrap_or("").trim()
     }
 
-    /// Everything after the first line, trimmed.
+    /// Everything after the first line, trimmed, without a closing block of
+    /// `Co-Authored-By:` trailers.
+    ///
+    /// GitHub strips that block when it creates a PR, so keeping it would make
+    /// every description look edited.
     pub fn body(&self) -> &str {
-        self.description
+        let body = self
+            .description
             .split_once('\n')
             .map(|(_, rest)| rest.trim())
-            .unwrap_or("")
+            .unwrap_or("");
+        let (rest, last) = body.rsplit_once("\n\n").unwrap_or(("", body));
+        if last.lines().all(is_co_author) {
+            rest.trim_end()
+        } else {
+            body
+        }
     }
+}
+
+fn is_co_author(line: &str) -> bool {
+    line.split_once(':')
+        .is_some_and(|(key, _)| key.eq_ignore_ascii_case("co-authored-by"))
 }
 
 /// "Running jj git fetch": the subcommand, without its flags and their values.
@@ -224,5 +240,20 @@ mod tests {
         assert_eq!(c.body(), "It does stuff.\nMore stuff.");
         assert_eq!(change("Just a title\n").body(), "");
         assert_eq!(c.short_id(), "kkkkkkkk");
+    }
+
+    #[test]
+    fn body_drops_a_closing_block_of_co_authors() {
+        let c = change("Title\n\nBody.\n\nCo-Authored-By: A <a@x>\nco-authored-by: B <b@x>\n");
+        assert_eq!(c.body(), "Body.");
+        assert_eq!(change("Title\n\nCo-Authored-By: A <a@x>\n").body(), "");
+    }
+
+    #[test]
+    fn body_keeps_mixed_or_inline_trailers() {
+        let mixed = "Title\n\nBody.\n\nCo-Authored-By: A <a@x>\nSigned-off-by: B <b@x>";
+        assert_eq!(change(mixed).body(), mixed.split_once("\n\n").unwrap().1);
+        let inline = "Title\n\nBody.\nCo-Authored-By: A <a@x>";
+        assert_eq!(change(inline).body(), "Body.\nCo-Authored-By: A <a@x>");
     }
 }
