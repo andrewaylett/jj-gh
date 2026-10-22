@@ -26,7 +26,7 @@ With [mise](https://mise.jdx.dev) (installs a prebuilt binary from the GitHub re
 verified against its signed packslip manifest):
 
 ```sh
-mise use -g packslip:andrewaylett/jj-gh@0.2.0
+mise use -g packslip:andrewaylett/jj-gh@0.2.1
 ```
 
 Or from source: `cargo install --git https://github.com/andrewaylett/jj-gh`.
