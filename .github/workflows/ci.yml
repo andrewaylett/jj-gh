@@ -22,20 +22,8 @@ jobs:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
         persist-credentials: false
-    - uses: dtolnay/rust-toolchain@d124f86f28ff42855784ff3319f48ac182c248f8 # 1.99.1
-      with:
-        components: clippy, rustfmt
-    - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
-    - name: Install jj and git identity
-      uses: jdx/mise-action@c37c93293d6b742fc901e1406b8f764f6fb19dac # v2.4.4
-      with:
-        install_args: jj
-    # The mise shim only resolves a version inside a mise-configured
-    # directory, but the e2e tests run jj from a temp dir.
-    - name: Put the real jj on PATH
-      shell: bash
-      run: dirname "$(mise which jj)" >> "$GITHUB_PATH"
-    - run: git config --global user.name ci && git config --global user.email ci@example.com
-    - run: cargo fmt --check
-    - run: cargo clippy --all-targets -- -D warnings
-    - run: cargo test
+    - uses: jdx/mise-action@8418fedb1110381a0d3ba51a7a415d7c1b884550 # v5.2.2
+    - uses: jdx/mr-boxington-action@47ce49b32025d93a7a2f4570815afaa2b7092240 # v1.7.2
+    - run: mbx fmt --check
+    - run: mbx clippy --all-targets -- -D warnings
+    - run: mbx test
