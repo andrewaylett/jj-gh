@@ -152,18 +152,20 @@ pub fn run(ctx: &Ctx, args: &Args) -> Result<()> {
 }
 
 /// Dissolve the native stack containing any of these PRs, if there is one.
-fn unstack_native(client: &Client, numbers: &[u64]) -> Result<()> {
+/// Says whether there was.
+pub(super) fn unstack_native(client: &Client, numbers: &[u64]) -> Result<bool> {
     for &n in numbers {
         if let Some(s) = client.stack_containing(n)? {
-            return client.unstack(s.number);
+            client.unstack(s.number)?;
+            return Ok(true);
         }
     }
-    Ok(())
+    Ok(false)
 }
 
 /// Make GitHub's stack for these PRs (bottom first) match `numbers`, creating,
 /// extending, or rebuilding it as needed.
-fn sync_native_stack(client: &Client, numbers: &[u64]) -> Result<()> {
+pub(super) fn sync_native_stack(client: &Client, numbers: &[u64]) -> Result<()> {
     let mut existing = None;
     for &n in numbers {
         if let Some(s) = client.stack_containing(n)? {
