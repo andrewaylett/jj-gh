@@ -45,6 +45,18 @@ the bookmarks on `@` (if jj would push it) and then on `@-`, asks GitHub which s
 PRs are in, and takes the first it finds. Any failure in that lookup is a warning and we fall
 back to `trunk()..@`, for the same reason as above.
 
+## Reparenting
+
+`reparent` is the one command that works on a tree rather than a linear stack, so it doesn't use
+`Ctx::segments`. It loads `mutable() & ::(revset)` as a graph, treats every change carrying a
+bookmark with an open PR as a node, and works out each target's base in `plan`. Nodes outside the
+revset still count as candidate bases; they just aren't retargeted. Changes without a PR are
+looked through, and `reparent` never creates PRs or bookmarks, that's `submit`'s job.
+
+The base is the single nearest PR ancestor; with several (a merge), the nearest PR that is an
+ancestor of all of them; with none, or an ambiguous answer, the default branch. After dissolving
+the native stack it rebuilds one only if every PR in the graph now forms one chain.
+
 ## Merging
 
 GitHub refuses to merge a PR that's in a native stack through the classic `PUT .../merge`

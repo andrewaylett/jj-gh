@@ -13,6 +13,7 @@ use crate::stack::{self, Options, Segment};
 
 pub mod merge;
 pub mod pr;
+pub mod reparent;
 pub mod status;
 pub mod submit;
 pub mod sync;
@@ -27,6 +28,14 @@ pub struct Ctx {
 }
 
 impl Ctx {
+    /// Bookmarks that must never be treated as stack members: the default
+    /// branch and whatever `trunk()` resolves to.
+    pub fn excluded_bookmarks(&self, default_branch: &str) -> Vec<String> {
+        let mut exclude = vec![default_branch.to_string()];
+        exclude.extend(self.jj.trunk_bookmark());
+        exclude
+    }
+
     pub fn repo(&self) -> Result<RepoRef> {
         match &self.repo_override {
             Some(slug) => RepoRef::from_slug(slug),
@@ -51,8 +60,7 @@ impl Ctx {
         revset: Option<&str>,
         default_branch: &str,
     ) -> Result<Vec<Segment>> {
-        let mut exclude = vec![default_branch.to_string()];
-        exclude.extend(self.jj.trunk_bookmark());
+        let exclude = self.excluded_bookmarks(default_branch);
         let prefix = self.jj.push_bookmark_prefix();
         let native = match revset {
             Some(_) => None,

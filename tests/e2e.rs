@@ -596,3 +596,37 @@ fn verbose_records_the_work_without_leaking_the_token() {
     assert!(!err.contains("test-token"), "{err}");
     assert_eq!(v.stdout, vv.stdout);
 }
+
+#[test]
+fn reparent_follows_a_parallelised_stack() {
+    let Some(env) = setup() else { return };
+    env.change("a.txt", "Add a");
+    env.change("b.txt", "Add b");
+    env.change("c.txt", "Add c");
+    env.gh_ok(&["submit"]);
+    let before = env.prs();
+    assert_eq!(before[&3].base, before[&2].head);
+
+    // Make c independent of b.
+    env.jj(&[
+        "rebase",
+        "-s",
+        "description(exact:\"Add c\\n\")",
+        "-d",
+        "description(exact:\"Add a\\n\")",
+    ]);
+
+    let plan = env.gh_ok(&["reparent", "--dry-run"]);
+    assert!(plan.contains("#3"), "{plan}");
+    assert_eq!(
+        env.prs()[&3].base,
+        before[&2].head,
+        "dry run changes nothing"
+    );
+
+    env.gh_ok(&["reparent"]);
+    let prs = env.prs();
+    assert_eq!(prs[&3].base, prs[&1].head, "{prs:#?}");
+    assert_eq!(prs[&2].base, prs[&1].head);
+    assert!(env.gh_ok(&["reparent"]).contains("right base"));
+}

@@ -100,6 +100,16 @@ enum Command {
         #[arg(long)]
         submit: bool,
     },
+    /// Retarget PRs at the nearest PR below them in the commit tree, e.g. after parallelising part of a stack.
+    Reparent {
+        /// Revset of changes whose PRs to retarget (default: what `jj git push` would consider,
+        /// `remote_bookmarks(remote=REMOTE)..@`).
+        #[arg(short, long)]
+        revision: Option<String>,
+        /// Say what would happen without touching jj or GitHub.
+        #[arg(short = 'n', long)]
+        dry_run: bool,
+    },
     /// Work with individual pull requests.
     #[command(subcommand)]
     Pr(PrCommand),
@@ -182,6 +192,13 @@ fn run() -> Result<()> {
                 force,
                 all,
                 submit,
+            },
+        ),
+        Command::Reparent { revision, dry_run } => cmd::reparent::run(
+            &ctx,
+            &cmd::reparent::Args {
+                revset: revision,
+                dry_run,
             },
         ),
         Command::Pr(PrCommand::Open { rev, print }) => cmd::pr::open(&ctx, rev.as_deref(), print),
