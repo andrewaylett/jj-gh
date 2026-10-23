@@ -1,6 +1,8 @@
 //! The stack model: a linear run of jj changes above trunk, cut into
 //! segments, each of which becomes one pull request.
 
+use std::collections::{HashMap, HashSet};
+
 use anyhow::{Result, bail};
 
 use crate::github::PullRequest;
@@ -19,6 +21,9 @@ pub struct Segment {
     pub new_bookmark: bool,
     /// Oldest first; the last element is the segment head.
     pub changes: Vec<Change>,
+    /// Segments whose heads are parents of the first change. Always earlier in
+    /// the list; empty when the segment sits directly on something outside it.
+    pub parents: Vec<usize>,
 }
 
 impl Segment {
@@ -59,6 +64,8 @@ pub struct Options<'a> {
     pub prefix: &'a str,
     /// Bookmarks that must never be treated as stack members (the trunk).
     pub exclude: &'a [String],
+    /// Allow forks and merges, instead of insisting on one linear chain.
+    pub tree: bool,
 }
 
 /// Load the changes and cut them into segments. Fails if the revset isn't a
@@ -70,19 +77,21 @@ pub fn load(jj: &Jj, opts: &Options) -> Result<Vec<Segment>> {
 
 pub fn segment(changes: Vec<Change>, opts: &Options) -> Result<Vec<Segment>> {
     for (i, c) in changes.iter().enumerate() {
-        match (i, c.parents.as_slice()) {
-            (0, [_]) => {}
-            (0, _) => bail!(
-                "change {} has {} parents; the stack's first change must have exactly one",
-                c.short_id(),
-                c.parents.len()
-            ),
-            (_, [p]) if *p == changes[i - 1].commit_id => {}
-            _ => bail!(
-                "the revset isn't a single linear stack (problem at change {}); \
-                 pick one with -r",
-                c.short_id()
-            ),
+        if !opts.tree {
+            match (i, c.parents.as_slice()) {
+                (0, [_]) => {}
+                (0, _) => bail!(
+                    "change {} has {} parents; the stack's first change must have exactly one",
+                    c.short_id(),
+                    c.parents.len()
+                ),
+                (_, [p]) if *p == changes[i - 1].commit_id => {}
+                _ => bail!(
+                    "the revset isn't a single linear stack (problem at change {}); \
+                     pick one with -r",
+                    c.short_id()
+                ),
+            }
         }
         if c.conflict {
             bail!("change {} has conflicts; resolve them first", c.short_id());
@@ -96,20 +105,66 @@ pub fn segment(changes: Vec<Change>, opts: &Options) -> Result<Vec<Segment>> {
         }
     }
 
-    let mut segments = Vec::new();
-    let mut pending: Vec<Change> = Vec::new();
-    let n = changes.len();
+    // Oldest first means parents come before children. Only edges inside the
+    // revset matter.
+    let index: HashMap<&str, usize> = changes
+        .iter()
+        .enumerate()
+        .map(|(i, c)| (c.commit_id.as_str(), i))
+        .collect();
+    let in_set: Vec<Vec<usize>> = changes
+        .iter()
+        .map(|c| {
+            c.parents
+                .iter()
+                .filter_map(|p| index.get(p.as_str()).copied())
+                .collect()
+        })
+        .collect();
+    let mut children = vec![0usize; changes.len()];
+    for p in in_set.iter().flatten() {
+        children[*p] += 1;
+    }
+    let ends: Vec<bool> = (0..changes.len())
+        .map(|i| {
+            let c = &changes[i];
+            let marked = c.bookmarks.iter().any(|b| !opts.exclude.contains(b));
+            // A fork or a leaf ends it, and so does a child that is a merge.
+            marked
+                || opts.per_change
+                || children[i] != 1
+                || in_set.iter().any(|ps| ps.len() > 1 && ps.contains(&i))
+        })
+        .collect();
+
+    // Each change either extends its only parent's segment or starts one.
+    let mut seg_of = vec![0usize; changes.len()];
+    let mut groups: Vec<(Vec<Change>, Vec<usize>)> = Vec::new();
     for (i, c) in changes.into_iter().enumerate() {
-        let existing = c
-            .bookmarks
-            .iter()
-            .filter(|b| !opts.exclude.contains(b))
-            .min()
-            .cloned();
-        pending.push(c);
-        let last = i + 1 == n;
-        if existing.is_some() || opts.per_change || last {
-            let head = pending.last().unwrap();
+        match in_set[i].as_slice() {
+            [p] if !ends[*p] => {
+                seg_of[i] = seg_of[*p];
+                groups[seg_of[i]].0.push(c);
+            }
+            ps => {
+                let mut parents: Vec<usize> = ps.iter().map(|p| seg_of[*p]).collect();
+                parents.dedup();
+                seg_of[i] = groups.len();
+                groups.push((vec![c], parents));
+            }
+        }
+    }
+
+    Ok(groups
+        .into_iter()
+        .map(|(changes, parents)| {
+            let head = changes.last().unwrap();
+            let existing = head
+                .bookmarks
+                .iter()
+                .filter(|b| !opts.exclude.contains(b))
+                .min()
+                .cloned();
             let (bookmark, new_bookmark) = match existing {
                 Some(b) => (b, false),
                 None => (
@@ -121,14 +176,58 @@ pub fn segment(changes: Vec<Change>, opts: &Options) -> Result<Vec<Segment>> {
                     true,
                 ),
             };
-            segments.push(Segment {
+            Segment {
                 bookmark,
                 new_bookmark,
-                changes: std::mem::take(&mut pending),
-            });
+                changes,
+                parents,
+            }
+        })
+        .collect())
+}
+
+/// The segment each one's PR should be based on, or `None` for the trunk.
+///
+/// That is its parent segment; for a merge, the nearest segment below all of
+/// its parents, or `None` if that isn't a single segment. (`reparent` makes
+/// the same call, but only among changes that have PRs.)
+pub fn bases(segments: &[Segment]) -> Vec<Option<usize>> {
+    // Segments are in topological order, so one pass fills in each one's ancestors.
+    let mut below: Vec<HashSet<usize>> = Vec::with_capacity(segments.len());
+    for s in segments {
+        let mut set = HashSet::new();
+        for &p in &s.parents {
+            set.insert(p);
+            set.extend(&below[p]);
         }
+        below.push(set);
     }
-    Ok(segments)
+    segments
+        .iter()
+        .map(|s| match s.parents.as_slice() {
+            [] => None,
+            [only] => Some(*only),
+            many => {
+                let mut shared = many.iter().map(|&p| {
+                    let mut mine = below[p].clone();
+                    mine.insert(p);
+                    mine
+                });
+                let first = shared.next().unwrap_or_default();
+                let common = shared.fold(first, |a, b| a.intersection(&b).copied().collect());
+                // Nearest = not below any other common segment.
+                let nearest: Vec<usize> = common
+                    .iter()
+                    .copied()
+                    .filter(|c| !common.iter().any(|o| below[*o].contains(c)))
+                    .collect();
+                match nearest.as_slice() {
+                    [one] => Some(*one),
+                    _ => None,
+                }
+            }
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -153,6 +252,7 @@ mod tests {
             per_change,
             prefix: "push-",
             exclude: &[],
+            tree: false,
         }
     }
 
@@ -217,5 +317,48 @@ mod tests {
         };
         let segs = segment(vec![ch("a", "root", "one", &["main"])], &o).unwrap();
         assert!(segs[0].new_bookmark);
+    }
+
+    fn tree_opts() -> Options<'static> {
+        Options {
+            tree: true,
+            ..opts(false)
+        }
+    }
+
+    #[test]
+    fn a_tree_is_cut_at_forks_and_merges() {
+        // a ─┬─ b1 ─┬─ c ─ d
+        //    └─ b2 ─┘
+        let cs = vec![
+            ch("a", "root", "a", &[]),
+            ch("b1", "a", "b1", &[]),
+            ch("b2", "a", "b2", &[]),
+            Change {
+                parents: vec!["b1".into(), "b2".into()],
+                ..ch("c", "", "c", &[])
+            },
+            ch("d", "c", "d", &[]),
+        ];
+        assert!(segment(cs.clone(), &opts(false)).is_err());
+        let segs = segment(cs, &tree_opts()).unwrap();
+        let sizes: Vec<usize> = segs.iter().map(|s| s.changes.len()).collect();
+        assert_eq!(sizes, [1, 1, 1, 2]);
+        assert_eq!(segs[3].parents, [1, 2]);
+        assert_eq!(bases(&segs), [None, Some(0), Some(0), Some(0)]);
+    }
+
+    #[test]
+    fn independent_branches_are_based_on_the_trunk() {
+        let cs = vec![
+            ch("a", "root", "a", &[]),
+            ch("b", "root", "b", &[]),
+            Change {
+                parents: vec!["a".into(), "b".into()],
+                ..ch("c", "", "c", &[])
+            },
+        ];
+        let segs = segment(cs, &tree_opts()).unwrap();
+        assert_eq!(bases(&segs), [None, None, None]);
     }
 }

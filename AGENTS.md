@@ -57,6 +57,12 @@ The base is the single nearest PR ancestor; with several (a merge), the nearest 
 ancestor of all of them; with none, or an ambiguous answer, the default branch. After dissolving
 the native stack it rebuilds one only if every PR in the graph now forms one chain.
 
+`status` also accepts trees. `Ctx::segment_tree` sets `Options::tree`, which skips the linearity
+check; `segment` then also cuts a segment at every fork and before every merge, and records each
+segment's `parents`. `stack::bases` gives the expected base using the same rule as `reparent`, but
+over segments rather than PRs. `submit`, `sync` and `merge` still go through `Ctx::segments` and so
+still insist on a linear stack.
+
 ## Merging
 
 GitHub refuses to merge a PR that's in a native stack through the classic `PUT .../merge`

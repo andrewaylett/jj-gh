@@ -60,6 +60,26 @@ impl Ctx {
         revset: Option<&str>,
         default_branch: &str,
     ) -> Result<Vec<Segment>> {
+        self.load_segments(client, revset, default_branch, false)
+    }
+
+    /// Like `segments`, but forks and merges are allowed.
+    pub fn segment_tree(
+        &self,
+        client: &Client,
+        revset: Option<&str>,
+        default_branch: &str,
+    ) -> Result<Vec<Segment>> {
+        self.load_segments(client, revset, default_branch, true)
+    }
+
+    fn load_segments(
+        &self,
+        client: &Client,
+        revset: Option<&str>,
+        default_branch: &str,
+        tree: bool,
+    ) -> Result<Vec<Segment>> {
         let exclude = self.excluded_bookmarks(default_branch);
         let prefix = self.jj.push_bookmark_prefix();
         let native = match revset {
@@ -90,6 +110,7 @@ impl Ctx {
                 per_change: !self.by_bookmark,
                 prefix: &prefix,
                 exclude: &exclude,
+                tree,
             },
         )?;
         log::note(format!(

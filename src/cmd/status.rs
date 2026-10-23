@@ -2,12 +2,12 @@ use anyhow::Result;
 
 use super::{Ctx, paint};
 use crate::github::{PrState, PullRequest};
-use crate::stack::Segment;
+use crate::stack::{self, Segment};
 
 pub fn run(ctx: &Ctx, revset: Option<&str>) -> Result<()> {
     let client = ctx.client()?;
     let default_branch = client.default_branch()?;
-    let segments = ctx.segments(&client, revset, &default_branch)?;
+    let segments = ctx.segment_tree(&client, revset, &default_branch)?;
     if segments.is_empty() {
         println!("No changes between trunk and the working copy.");
         return Ok(());
@@ -30,20 +30,47 @@ pub fn run(ctx: &Ctx, revset: Option<&str>) -> Result<()> {
         })
         .collect();
 
-    // Newest on top, like `jj log`.
+    // Newest on top, like `jj log`. A segment that doesn't sit on the one
+    // printed just below it says what it is based on.
+    let bases = stack::bases(&segments);
     for i in (0..segments.len()).rev() {
-        let expected_base = if i == 0 {
-            &default_branch
-        } else {
-            &segments[i - 1].bookmark
+        let expected_base = match bases[i] {
+            Some(b) => &segments[b].bookmark,
+            None => &default_branch,
         };
-        print_segment(&segments[i], prs[i].as_ref(), expected_base);
+        let follows_previous = match segments[i].parents.as_slice() {
+            [] => i == 0,
+            [p] => *p + 1 == i,
+            _ => false,
+        };
+        let sits_on = (!follows_previous).then(|| match segments[i].parents.as_slice() {
+            [] => default_branch.clone(),
+            ps => ps
+                .iter()
+                .map(|&p| match &prs[p] {
+                    Some(pr) => format!("#{}", pr.number),
+                    None => segments[p].bookmark.clone(),
+                })
+                .collect::<Vec<_>>()
+                .join(" + "),
+        });
+        print_segment(
+            &segments[i],
+            prs[i].as_ref(),
+            expected_base,
+            sits_on.as_deref(),
+        );
     }
     println!("{} {}", paint("36", "◆"), default_branch);
     Ok(())
 }
 
-fn print_segment(seg: &Segment, pr: Option<&PullRequest>, expected_base: &str) {
+fn print_segment(
+    seg: &Segment,
+    pr: Option<&PullRequest>,
+    expected_base: &str,
+    sits_on: Option<&str>,
+) {
     let head = seg.head();
     let (label, mut notes) = match pr {
         Some(pr) => (format!("#{}", pr.number), pr_notes(pr)),
@@ -64,6 +91,9 @@ fn print_segment(seg: &Segment, pr: Option<&PullRequest>, expected_base: &str) {
         if !seg.description_matches(pr) {
             notes.push(paint("33", "description differs"));
         }
+    }
+    if let Some(on) = sits_on {
+        notes.push(paint("36", &format!("on {on}")));
     }
     let marker = match pr.map(|p| p.state) {
         Some(PrState::Merged) => paint("35", "✔"),
