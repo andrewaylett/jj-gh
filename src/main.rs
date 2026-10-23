@@ -52,7 +52,7 @@ enum Command {
     /// Show the stack of pull requests between trunk and the working copy.
     #[command(visible_aliases = ["st", "stack"])]
     Status {
-        /// Revset for the stack (default: the native stack, else trunk()..@; an unpushable @ is left out).
+        /// Revset for the stack (default: the native stack, else (trunk()..@):: & mutable(), so parallel branches show; an unpushable @ is left out).
         #[arg(short, long)]
         revision: Option<String>,
     },

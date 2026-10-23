@@ -98,7 +98,11 @@ impl Ctx {
         let revset = match revset.or(native.as_deref()) {
             Some(r) => r,
             None => {
-                fallback = stack::default_revset(&self.jj);
+                fallback = if tree {
+                    stack::default_tree_revset(&self.jj)
+                } else {
+                    stack::default_revset(&self.jj)
+                };
                 &fallback
             }
         };

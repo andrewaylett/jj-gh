@@ -13,6 +13,15 @@ pub fn default_revset(jj: &Jj) -> String {
     format!("trunk()..@ ~ (@ & {})", jj.unpushable_revset())
 }
 
+/// Like `default_revset`, but also the mutable descendants of the stack, so
+/// that parallel branches off it are found.
+pub fn default_tree_revset(jj: &Jj) -> String {
+    format!(
+        "(trunk()..@):: & mutable() ~ (@ & {})",
+        jj.unpushable_revset()
+    )
+}
+
 #[derive(Debug, Clone)]
 pub struct Segment {
     /// Existing bookmark, or the name one will be created with on submit.

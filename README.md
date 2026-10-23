@@ -67,7 +67,7 @@ URL, status, time), never the token. `-r/--revision` picks the stack. By default
 native GitHub stack gives the whole stack, even when `@` is part-way up it. A
 pushable `@` above the stack is included; one that `jj git push` would refuse
 (undescribed, conflicted, or private) is left out. If there's no such stack, the
-default is `trunk()..@`, again leaving out an unpushable `@`; `-n/--dry-run` on `submit`; `--draft`;
+default is `trunk()..@` (for `status`, `(trunk()..@):: & mutable()`, so parallel branches show up), again leaving out an unpushable `@`; `-n/--dry-run` on `submit`; `--draft`;
 `--reviewer LOGIN`; `--update-description` to push edited change descriptions
 to existing PRs (otherwise titles and bodies you've edited on GitHub are left
 alone).
