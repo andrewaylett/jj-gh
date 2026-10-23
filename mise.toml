@@ -1,5 +1,5 @@
 # Dev tooling for working on jj-gh itself.
 [tools]
-rust = "stable"
-jj = "latest"
-pinact = "latest"
+rust = { version = "1.99.1", profile = "default" }
+jj = "0.46.0"
+pinact = "5.0.1"
