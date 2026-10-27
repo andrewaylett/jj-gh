@@ -15,4 +15,4 @@ jobs:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
         persist-credentials: false
-    - uses: andrewaylett/pre-commit-action@a8584e869a37608008d9f6c0888844f0a79284e0 # v4.7.0-6
+    - uses: andrewaylett/pre-commit-action@0e5d5baf9cb5b8ed949ecd62bc5d57154296d505 # v4.7.0-7
