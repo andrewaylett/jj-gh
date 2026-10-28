@@ -89,7 +89,7 @@ jobs:
       contents: read
       id-token: write
     steps:
-    - uses: jdx/packslip@3a4afb16b29d3ac639fcd35cbe99124184f71859 # v1.11.1
+    - uses: jdx/packslip@b934a22ba187f1d3928441170b9413c5119360bf # v1.11.2
       id: packslip
       with:
         download: jj-gh-*.tar.gz jj-gh-*.zip
